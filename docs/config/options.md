@@ -20,14 +20,17 @@ providers:
 
 Supported `type` values and their pydantic-ai backends:
 
-| type | Backend |
-| --- | --- |
-| `openai` | `OpenAIProvider` |
-| `azure` | `AzureProvider` |
-| `bedrock` | `BedrockProvider` |
-| `vertexai` | `GoogleCloudProvider` |
-| `watsonx` | `LiteLLMProvider` |
-| `vllm` | `OpenAIProvider` (OpenAI-compatible) |
+| type | Provider | Model kind |
+| --- | --- | --- |
+| `openai` | `OpenAIProvider` | Responses (`openai`) |
+| `azure` | `AzureProvider` | Chat (`azure`) |
+| `bedrock` | `BedrockProvider` | Converse (`bedrock`) |
+| `vertexai` | `GoogleCloudProvider` | Google (`google-cloud`) |
+| `watsonx` | `LiteLLMProvider` | Chat (`litellm`) |
+| `vllm` | `OpenAIProvider` (compatible) | Chat (`openai-chat`) |
+
+At runtime, `ProviderRegistry.get_model(name, model_name)` returns a pydantic-ai
+`Model` bound to the registered provider (for a future agent loader).
 
 Example:
 

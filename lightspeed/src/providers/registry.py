@@ -1,11 +1,14 @@
-"""Registry of client-configured pydantic-ai providers."""
+"""Registry of client-configured pydantic-ai providers and models."""
 
 from __future__ import annotations
 
 import inspect
+from dataclasses import dataclass
 from typing import Any, Iterable, Iterator, Mapping, Optional
 
+from pydantic_ai.models import Model, infer_model
 from pydantic_ai.providers import Provider, infer_provider_class
+from pydantic_ai.settings import ModelSettings
 
 from lightspeed.app.models.config import ProviderConfiguration, ProviderType
 
@@ -22,18 +25,43 @@ PROVIDER_BACKEND_MAP: dict[ProviderType, str] = {
     "vllm": "openai",  # OpenAI-compatible endpoint
 }
 
+# Lightspeed provider type -> model-kind prefix for infer_model.
+# Distinct from PROVIDER_BACKEND_MAP so OpenAI-compatible endpoints (vllm) can
+# use chat completions while native openai uses the Responses API.
+PROVIDER_MODEL_KIND_MAP: dict[ProviderType, str] = {
+    "openai": "openai",
+    "azure": "azure",
+    "bedrock": "bedrock",
+    "vertexai": "google-cloud",
+    "watsonx": "litellm",
+    "vllm": "openai-chat",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class RegisteredProvider:
+    """A configured provider entry held by the registry."""
+
+    config: ProviderConfiguration
+    provider: Provider[Any]
+
 
 class ProviderRegistry:
-    """Lookup table of pydantic-ai :class:`~pydantic_ai.providers.Provider` instances.
+    """Lookup table of pydantic-ai providers and models.
 
     Providers are created from :class:`~lightspeed.app.models.config.ProviderConfiguration`
     entries. ``type`` is mapped through :data:`PROVIDER_BACKEND_MAP` onto a
     pydantic-ai provider class; ``url`` / ``api_key`` are forwarded using the
     parameter names that class accepts.
+
+    :meth:`get_model` binds a model name to a registered provider via
+    pydantic-ai's :func:`~pydantic_ai.models.infer_model`, so a future agent
+    loader can do ``Agent(registry.get_model(...))`` similarly to the original
+    ``build_agent`` helper.
     """
 
     def __init__(self) -> None:
-        self._providers: dict[str, Provider[Any]] = {}
+        self._entries: dict[str, RegisteredProvider] = {}
 
     @classmethod
     def from_configs(
@@ -53,7 +81,7 @@ class ProviderRegistry:
                 backend mapping, or ``url`` / ``api_key`` are incompatible with
                 the backend provider.
         """
-        if config.name in self._providers:
+        if config.name in self._entries:
             raise ValueError(f"Provider already registered: {config.name!r}")
 
         backend = PROVIDER_BACKEND_MAP.get(config.type)
@@ -62,7 +90,9 @@ class ProviderRegistry:
 
         provider_cls = infer_provider_class(backend)
         provider = provider_cls(**_provider_kwargs(config, provider_cls))
-        self._providers[config.name] = provider
+        self._entries[config.name] = RegisteredProvider(
+            config=config, provider=provider
+        )
         return provider
 
     def get(self, name: str) -> Provider[Any]:
@@ -71,32 +101,68 @@ class ProviderRegistry:
         Raises:
             KeyError: If no provider with that name exists.
         """
-        try:
-            return self._providers[name]
-        except KeyError as exc:
-            raise KeyError(f"Unknown provider: {name!r}") from exc
+        return self._get_entry(name).provider
 
-    def get_optional(self, name: str) -> Optional[Provider[Any]]:
-        """Return the provider registered under ``name``, or ``None``."""
-        return self._providers.get(name)
+    def get_model(
+        self,
+        name: str,
+        model_name: str,
+        *,
+        settings: Optional[ModelSettings] = None,
+    ) -> Model:
+        """Return a pydantic-ai :class:`~pydantic_ai.models.Model` for ``name``.
+
+        The model is constructed with the registered provider instance, using
+        pydantic-ai's model-kind rules for this Lightspeed provider type.
+
+        Parameters:
+            name: Registry key of the configured provider.
+            model_name: Upstream model identifier (e.g. ``gpt-4o``).
+            settings: Optional pydantic-ai :class:`~pydantic_ai.settings.ModelSettings`
+                applied as defaults on the returned model.
+
+        Returns:
+            A pydantic-ai ``Model`` ready to pass to ``Agent(...)``.
+
+        Raises:
+            KeyError: If no provider with that name exists.
+            ValueError: If ``model_name`` is empty.
+        """
+        if not model_name or not model_name.strip():
+            raise ValueError("model_name must be a non-empty string")
+
+        entry = self._get_entry(name)
+        model_kind = PROVIDER_MODEL_KIND_MAP[entry.config.type]
+        provider = entry.provider
+        model = infer_model(
+            f"{model_kind}:{model_name.strip()}",
+            provider_factory=lambda _provider_name: provider,
+        )
+        return type(model)(model.model_name, provider=provider, settings=settings)
 
     def __contains__(self, name: object) -> bool:
-        return isinstance(name, str) and name in self._providers
+        return isinstance(name, str) and name in self._entries
 
     def __len__(self) -> int:
-        return len(self._providers)
+        return len(self._entries)
 
     def __iter__(self) -> Iterator[str]:
-        return iter(self._providers)
+        return iter(self._entries)
 
     def items(self) -> Iterator[tuple[str, Provider[Any]]]:
         """Iterate ``(name, provider)`` pairs."""
-        return iter(self._providers.items())
+        return ((name, entry.provider) for name, entry in self._entries.items())
 
     @property
     def providers(self) -> Mapping[str, Provider[Any]]:
         """Read-only view of registered providers."""
-        return self._providers
+        return {name: entry.provider for name, entry in self._entries.items()}
+
+    def _get_entry(self, name: str) -> RegisteredProvider:
+        try:
+            return self._entries[name]
+        except KeyError as exc:
+            raise KeyError(f"Unknown provider: {name!r}") from exc
 
 
 def _provider_kwargs(

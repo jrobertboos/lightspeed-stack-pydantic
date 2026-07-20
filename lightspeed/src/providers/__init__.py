@@ -1,4 +1,4 @@
-"""LLM provider registry built on pydantic-ai providers."""
+"""LLM provider registry built on pydantic-ai providers and models."""
 
 from lightspeed.src.providers.registry import ProviderRegistry
 

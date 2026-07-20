@@ -6,15 +6,21 @@ import typing
 
 import pytest
 from pydantic import TypeAdapter, ValidationError
+from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 from pydantic_ai.providers.litellm import LiteLLMProvider
 from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.settings import ModelSettings
 
 from lightspeed.app.models.config import (
     Configuration,
     ProviderConfiguration,
     ProviderType,
 )
-from lightspeed.src.providers.registry import PROVIDER_BACKEND_MAP, ProviderRegistry
+from lightspeed.src.providers.registry import (
+    PROVIDER_BACKEND_MAP,
+    PROVIDER_MODEL_KIND_MAP,
+    ProviderRegistry,
+)
 
 SUPPORTED_TYPES: tuple[ProviderType, ...] = typing.get_args(ProviderType)
 
@@ -63,6 +69,7 @@ def test_supported_types_match_backend_map() -> None:
         "vllm",
     }
     assert set(PROVIDER_BACKEND_MAP) == set(SUPPORTED_TYPES)
+    assert set(PROVIDER_MODEL_KIND_MAP) == set(SUPPORTED_TYPES)
     for provider_type in SUPPORTED_TYPES:
         TypeAdapter(ProviderType).validate_python(provider_type)
 
@@ -137,3 +144,60 @@ def test_registry_get_unknown_name() -> None:
     registry = ProviderRegistry()
     with pytest.raises(KeyError, match="Unknown provider"):
         registry.get("missing")
+
+
+def test_registry_get_model_binds_registered_provider() -> None:
+    registry = ProviderRegistry.from_configs(
+        [ProviderConfiguration(name="openai", type="openai", api_key="sk-test")]
+    )
+    provider = registry.get("openai")
+    model = registry.get_model("openai", "gpt-4o")
+
+    assert isinstance(model, OpenAIResponsesModel)
+    assert model.model_name == "gpt-4o"
+    assert model.provider is provider
+    assert model.settings is None
+
+
+def test_registry_get_model_applies_model_settings() -> None:
+    registry = ProviderRegistry.from_configs(
+        [ProviderConfiguration(name="openai", type="openai", api_key="sk-test")]
+    )
+    settings = ModelSettings(temperature=0.2, max_tokens=128)
+    model = registry.get_model("openai", "gpt-4o", settings=settings)
+
+    assert isinstance(model, OpenAIResponsesModel)
+    assert model.settings == settings
+    assert model.provider is registry.get("openai")
+
+
+def test_registry_get_model_uses_chat_for_vllm() -> None:
+    registry = ProviderRegistry.from_configs(
+        [
+            ProviderConfiguration(
+                name="my-vllm",
+                type="vllm",
+                url="http://localhost:8000/v1",
+                api_key="not-needed",
+            )
+        ]
+    )
+    model = registry.get_model("my-vllm", "granite-3.3-8b-instruct")
+
+    assert isinstance(model, OpenAIChatModel)
+    assert model.model_name == "granite-3.3-8b-instruct"
+    assert model.provider is registry.get("my-vllm")
+
+
+def test_registry_get_model_rejects_empty_model_name() -> None:
+    registry = ProviderRegistry.from_configs(
+        [ProviderConfiguration(name="openai", type="openai", api_key="sk-test")]
+    )
+    with pytest.raises(ValueError, match="model_name"):
+        registry.get_model("openai", "  ")
+
+
+def test_registry_get_model_unknown_provider() -> None:
+    registry = ProviderRegistry()
+    with pytest.raises(KeyError, match="Unknown provider"):
+        registry.get_model("missing", "gpt-4o")
