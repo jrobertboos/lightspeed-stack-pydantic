@@ -1,0 +1,40 @@
+name: Lightspeed Stack
+
+service:
+  host: 0.0.0.0
+  port: 8080
+  auth_enabled: true
+  workers: 1
+  color_log: true
+  access_log: true
+
+# Providers configuration — each entry becomes a pydantic-ai Provider in the registry.
+# Supported types: openai, azure, bedrock, vertexai, watsonx, vllm
+# Example:
+#   providers:
+#     - name: openai
+#       type: openai
+#       api_key: sk-...
+#     - name: my-vllm
+#       type: vllm
+#       url: http://localhost:8000/v1
+#       api_key: not-needed
+providers: []
+
+# Authentication configuration
+authentication:
+
+# Authorization configuration
+authorization:
+
+# Knowledge configuration
+knowledge:
+
+# Safety configuration
+safety:
+
+# MCP servers configuration
+mcp_servers:
+
+# Skills configuration
+skills:
