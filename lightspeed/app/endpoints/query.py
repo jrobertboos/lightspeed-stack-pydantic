@@ -8,12 +8,17 @@ through :func:`~lightspeed.src.agent.loader.load_agent` and pydantic-ai
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request
 from pydantic_ai.run import AgentRunResult
 
 from lightspeed.app.models.requests.query import QueryRequest
+from lightspeed.app.models.responses.error import (
+    InternalServerErrorResponse,
+    NotFoundResponse,
+    UnprocessableEntityResponse,
+)
 from lightspeed.app.models.responses.success.query import QueryResponse
 from lightspeed.src.agent.loader import load_agent
 from lightspeed.src.providers.registry import ProviderRegistry
@@ -21,8 +26,28 @@ from lightspeed.src.providers.registry import ProviderRegistry
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["query"])
 
+query_response: dict[int | str, dict[str, Any]] = {
+    404: NotFoundResponse.openapi_response(
+        examples=["conversation", "model", "provider"]
+    ),
+    422: UnprocessableEntityResponse.openapi_response(),
+    500: InternalServerErrorResponse.openapi_response(
+        examples=["configuration", "query"]
+    ),
+    # Not yet raised by this minimal rewrite:
+    # 401: UnauthorizedResponse.openapi_response(...)
+    # 403: ForbiddenResponse.openapi_response(...)
+    # 413: PromptTooLongResponse.openapi_response(...)
+    # 429: QuotaExceededResponse.openapi_response()
+    # 503: ServiceUnavailableResponse.openapi_response(...)
+}
 
-@router.post("/query", summary="Query Endpoint Handler")
+
+@router.post(
+    "/query",
+    responses=query_response,
+    summary="Query Endpoint Handler",
+)
 # @authorize(Action.QUERY)  # authorization not yet implemented
 async def query_endpoint_handler(
     request: Request,
@@ -36,13 +61,13 @@ async def query_endpoint_handler(
         - Resolve ``ProviderRegistry`` from app state
         - ``load_agent`` + ``agent.run`` for the user query
         - Return a minimal :class:`QueryResponse`
+        - Structured error responses (``detail.response`` / ``detail.cause``)
 
     Not yet implemented (see commented steps below):
         - Auth / authorization / MCP OAuth
         - Quota checks and token accounting
         - Conversation load/store, compaction, topic summary
         - Shield moderation, RAG, tools/MCP
-        - Structured error responses and OpenAPI response map
     """
     # check_configuration_loaded(configuration)  # configuration singleton not yet implemented
 
@@ -81,22 +106,24 @@ async def query_endpoint_handler(
         )
         run_result = await agent.run(query_request.query)
     except KeyError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        ) from exc
+        error_response = NotFoundResponse(
+            resource="provider",
+            resource_id=provider_name,
+        )
+        raise HTTPException(**error_response.model_dump()) from exc
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
-        ) from exc
+        error_response = UnprocessableEntityResponse(
+            response="Invalid attribute value",
+            cause=str(exc),
+        )
+        raise HTTPException(**error_response.model_dump()) from exc
     except Exception as exc:
         # map_agent_inference_error(...) / handle_known_apistatus_errors(...) not yet implemented
         logger.exception("Query agent run failed")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Query failed",
-        ) from exc
+        error_response = InternalServerErrorResponse.query_failed(
+            cause="Failed to call backend API",
+        )
+        raise HTTPException(**error_response.model_dump()) from exc
 
     # topic_summary = await maybe_get_topic_summary(...)
     # consume_query_tokens(...)
@@ -144,10 +171,8 @@ def _get_provider_registry(request: Request) -> ProviderRegistry:
     """
     registry = getattr(request.app.state, "provider_registry", None)
     if registry is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Provider registry is not configured on the application",
-        )
+        error_response = InternalServerErrorResponse.configuration_not_loaded()
+        raise HTTPException(**error_response.model_dump())
     return registry
 
 
@@ -161,8 +186,12 @@ def _resolve_provider_and_model(query_request: QueryRequest) -> tuple[str, str]:
     # model = await select_model_for_responses(request_model, client, user_conversation)
 
     if not query_request.provider or not query_request.model:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Both provider and model are required until default model selection is implemented",
+        error_response = UnprocessableEntityResponse(
+            response="Missing required attributes",
+            cause=(
+                "Both provider and model are required until default "
+                "model selection is implemented"
+            ),
         )
+        raise HTTPException(**error_response.model_dump())
     return query_request.provider, query_request.model
