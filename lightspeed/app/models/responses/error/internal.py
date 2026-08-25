@@ -45,6 +45,13 @@ class InternalServerErrorResponse(AbstractErrorResponse):
                     },
                 },
                 {
+                    "label": "tools",
+                    "detail": {
+                        "response": "Error while listing tools",
+                        "cause": "Failed to build agent to discover tools",
+                    },
+                },
+                {
                     "label": "conversation cache",
                     "detail": {
                         "response": "Conversation cache not configured",
@@ -152,6 +159,20 @@ class InternalServerErrorResponse(AbstractErrorResponse):
         return cls(
             response="Error while processing query",
             cause=cause,
+        )
+
+    @classmethod
+    def tools_failed(cls) -> Self:
+        """
+        Create an InternalServerErrorResponse representing a failed tool listing.
+
+        Returns:
+            Error response with response "Error while listing tools" and a
+            cause indicating agent construction for tool discovery failed.
+        """
+        return cls(
+            response="Error while listing tools",
+            cause="Failed to build agent to discover tools",
         )
 
     @classmethod

@@ -3,8 +3,8 @@
 Minimal rewrite of the original Lightspeed ``/tools`` endpoint. The original
 consolidates tools from configured MCP servers plus built-in toolgroups
 (file search, agent "skills" capabilities). This lists whatever toolsets
-:meth:`~lightspeed.core.agent.factory.AgentFactory.create_agent` attaches to
-its agents -- currently none, since MCP servers, built-in toolgroups, and
+:func:`~lightspeed.core.agent.service.list_tools` discovers on a freshly
+built agent -- currently none, since MCP servers, built-in toolgroups, and
 skills aren't wired in yet (see the ``mcp_servers`` / ``skills`` stub fields
 on :class:`~lightspeed.app.models.config.Configuration`). Auth/authorization
 and MCP headers are not yet implemented either.
@@ -12,54 +12,45 @@ and MCP headers are not yet implemented either.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
-from lightspeed.app.models.responses.success.tools import (
-    ToolInfo,
-    ToolParameter,
-    ToolsResponse,
-)
-from lightspeed.core.agent.factory import AgentFactory
-from lightspeed.core.agent.tools import AgentTool, list_agent_tools
+from lightspeed.app.models.responses.error import InternalServerErrorResponse
+from lightspeed.app.models.responses.success.tools import ToolInfo, ToolsResponse
+from lightspeed.core import service as core_service
+from lightspeed.core.agent import service as agent_service
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["tools"])
 
+tools_response: dict[int | str, dict[str, Any]] = {
+    500: InternalServerErrorResponse.openapi_response(
+        examples=["configuration", "tools"]
+    ),
+}
 
-@router.get("/tools", summary="Tools Endpoint Handler")
+
+@router.get("/tools", responses=tools_response, summary="Tools Endpoint Handler")
 async def tools_endpoint_handler() -> ToolsResponse:
     """Return the tools and other callable capabilities available to the agent.
 
-    Builds an agent via ``AgentFactory.create_agent`` with no provider/model
-    (tool discovery never calls the model or a tool, so the placeholder
-    model that gets bound instead is harmless) so this always has the same
-    toolsets a real request agent would, reflecting reality as they're
-    wired in.
+    Delegates to ``agent_service.list_tools``, which reflects whatever
+    toolsets a real request agent would have -- currently none, since MCP
+    servers, built-in toolgroups, and skills aren't wired in yet.
     """
-    agent = AgentFactory.create_agent()
-    agent_tools = await list_agent_tools(agent)
-    return ToolsResponse(tools=[_tool_info(tool) for tool in agent_tools])
+    try:
+        core_service.get_configuration()
+    except RuntimeError as exc:
+        error_response = InternalServerErrorResponse.configuration_not_loaded()
+        raise HTTPException(**error_response.model_dump()) from exc
 
+    try:
+        agent_tools = await agent_service.list_tools()
+    except Exception as exc:
+        logger.exception("Failed to list tools")
+        error_response = InternalServerErrorResponse.tools_failed()
+        raise HTTPException(**error_response.model_dump()) from exc
 
-def _tool_info(tool: AgentTool) -> ToolInfo:
-    """Map a pydantic-ai tool definition onto the ``/tools`` response shape."""
-    schema = tool.definition.parameters_json_schema or {}
-    required = set(schema.get("required", []))
-    properties: dict[str, Any] = schema.get("properties", {})
-    parameters = [
-        ToolParameter(
-            name=name,
-            description=property_schema.get("description", ""),
-            parameter_type=property_schema.get("type", "string"),
-            required=name in required,
-            default=property_schema.get("default"),
-        )
-        for name, property_schema in properties.items()
-    ]
-    return ToolInfo(
-        identifier=tool.definition.name,
-        description=tool.definition.description or "",
-        parameters=parameters,
-        toolset=tool.toolset,
-    )
+    return ToolsResponse.from_agent_tools(agent_tools)

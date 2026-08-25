@@ -3,8 +3,9 @@ from typing import AsyncIterator, Optional, Tuple
 from lightspeed.app.models.responses.error import InternalServerErrorResponse
 from lightspeed.app.models.responses.success.stream import EndStreamPayload, ErrorStreamPayload, StartStreamPayload
 from lightspeed.core.agent import AgentFactory
-from lightspeed.core.agent.schemas import AgentQuery
+from lightspeed.core.agent.schemas import AgentQuery, AgentTool
 from lightspeed.core.agent.streaming import StreamState, dispatch_stream_event
+from lightspeed.core.agent.tools import list_agent_tools
 from pydantic_ai import Agent, AgentRunResultEvent
 
 
@@ -14,6 +15,17 @@ def create_agent(
     instructions: Optional[str] = None,
 ) -> Agent[None, str]:
     return AgentFactory.create_agent(provider=provider, model=model, instructions=instructions)
+
+async def list_tools() -> list[AgentTool]:
+    """Return every tool exposed by a freshly built agent's toolsets.
+
+    Builds an agent with no provider/model (tool discovery never calls the
+    model or a tool, so the placeholder model that gets bound instead is
+    harmless) so this always reflects the same toolsets a real request
+    agent would have.
+    """
+    agent = create_agent()
+    return await list_agent_tools(agent)
 
 async def query(
     agent: Agent[None, str],

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from typing import Any, Optional
+from typing_extensions import Self
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from lightspeed.core.agent.tools import AgentTool
 
 
 class ToolParameter(BaseModel):
@@ -72,6 +75,38 @@ class ToolInfo(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    @classmethod
+    def from_agent_tool(cls, tool: AgentTool) -> Self:
+        """Create a ToolInfo from an AgentTool.
+
+        Args:
+            tool: The pydantic-ai tool definition, paired with the label of
+                the toolset it came from.
+
+        Returns:
+            A ToolInfo with the tool's identifier, description, toolset,
+            and parameters (derived from its JSON Schema) populated.
+        """
+        schema = tool.definition.parameters_json_schema or {}
+        required = set(schema.get("required", []))
+        properties: dict[str, Any] = schema.get("properties", {})
+        parameters = [
+            ToolParameter(
+                name=name,
+                description=property_schema.get("description", ""),
+                parameter_type=property_schema.get("type", "string"),
+                required=name in required,
+                default=property_schema.get("default"),
+            )
+            for name, property_schema in properties.items()
+        ]
+        return cls(
+            identifier=tool.definition.name,
+            description=tool.definition.description or "",
+            parameters=parameters,
+            toolset=tool.toolset,
+        )
+
 
 class ToolsResponse(BaseModel):
     """Response body for ``GET /v1/tools``.
@@ -108,3 +143,17 @@ class ToolsResponse(BaseModel):
     )
 
     model_config = ConfigDict(extra="forbid")
+
+    @classmethod
+    def from_agent_tools(cls, tools: list[AgentTool]) -> Self:
+        """Create a ToolsResponse from a list of AgentTools.
+
+        Args:
+            tools: The list of pydantic-ai tool definitions, paired with the
+                label of the toolset they came from.
+
+        Returns:
+            A ToolsResponse with the tools' identifiers, descriptions, toolsets,
+            and parameters (derived from their JSON Schemas) populated.
+        """
+        return cls(tools=[ToolInfo.from_agent_tool(tool) for tool in tools])
