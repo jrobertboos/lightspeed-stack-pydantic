@@ -1,22 +1,27 @@
-"""Registry of client-configured pydantic-ai providers and models."""
+"""Singleton registry of client-configured pydantic-ai providers."""
 
 from __future__ import annotations
 
+import asyncio
 import inspect
-from dataclasses import dataclass
-from typing import Any, Iterable, Iterator, Mapping, Optional
+from typing import Any, Iterable, Iterator, Mapping
+
+import boto3
+from botocore.client import BaseClient as BedrockClient
+from google.genai import Client as GoogleClient
+from openai import AsyncOpenAI as OpenAIClient
 
 from pydantic_ai.models import Model, infer_model
 from pydantic_ai.providers import Provider, infer_provider_class
-from pydantic_ai.settings import ModelSettings
 
 from lightspeed.app.models.config import ProviderConfiguration, ProviderType
+from lightspeed.src.utils.types import Singleton
 
 # Constructor kwargs used by pydantic-ai providers for the configured base URL.
 _URL_PARAM_NAMES = ("base_url", "api_base", "azure_endpoint")
 
 # Lightspeed provider type -> pydantic-ai name for infer_provider_class.
-PROVIDER_BACKEND_MAP: dict[ProviderType, str] = {
+_PROVIDER_BACKEND_MAP: dict[ProviderType, str] = {
     "openai": "openai",
     "azure": "azure",
     "bedrock": "bedrock",
@@ -25,10 +30,10 @@ PROVIDER_BACKEND_MAP: dict[ProviderType, str] = {
     "vllm": "openai",  # OpenAI-compatible endpoint
 }
 
-# Lightspeed provider type -> model-kind prefix for infer_model.
-# Distinct from PROVIDER_BACKEND_MAP so OpenAI-compatible endpoints (vllm) can
-# use chat completions while native openai uses the Responses API.
-PROVIDER_MODEL_KIND_MAP: dict[ProviderType, str] = {
+# Lightspeed provider type -> model-kind prefix for infer_model. Kept distinct
+# from _PROVIDER_BACKEND_MAP so OpenAI-compatible endpoints (vllm) use chat
+# completions while native openai uses the Responses API.
+_PROVIDER_MODEL_KIND_MAP: dict[ProviderType, str] = {
     "openai": "openai",
     "azure": "azure",
     "bedrock": "bedrock",
@@ -38,131 +43,112 @@ PROVIDER_MODEL_KIND_MAP: dict[ProviderType, str] = {
 }
 
 
-@dataclass(frozen=True, slots=True)
-class RegisteredProvider:
-    """A configured provider entry held by the registry."""
+class ProviderRegistry(metaclass=Singleton):
+    """Process-wide singleton holding the client-configured LLM providers and their models.
 
-    config: ProviderConfiguration
-    provider: Provider[Any]
-
-
-class ProviderRegistry:
-    """Lookup table of pydantic-ai providers and models.
-
-    Providers are created from :class:`~lightspeed.app.models.config.ProviderConfiguration`
-    entries. ``type`` is mapped through :data:`PROVIDER_BACKEND_MAP` onto a
-    pydantic-ai provider class; ``url`` / ``api_key`` are forwarded using the
-    parameter names that class accepts.
-
-    :meth:`get_model` binds a model name to a registered provider via
-    pydantic-ai's :func:`~pydantic_ai.models.infer_model`, so a future agent
-    loader can do ``Agent(registry.get_model(...))`` similarly to the original
-    ``build_agent`` helper.
+    :meth:`load` builds a pydantic-ai :class:`~pydantic_ai.providers.Provider`
+    for each :class:`~lightspeed.app.models.config.ProviderConfiguration` entry
+    and eagerly queries each one for its available models (e.g. at startup),
+    so callers such as the agent factory can look providers and models up by
+    name without any further client calls.
     """
 
     def __init__(self) -> None:
-        self._entries: dict[str, RegisteredProvider] = {}
+        self._providers: dict[str, Provider[Any]] = {}
+        self._models: dict[str, list[Model]] = {}
 
-    @classmethod
-    def from_configs(
-        cls, configs: Iterable[ProviderConfiguration]
-    ) -> ProviderRegistry:
-        """Build a registry from a sequence of provider configurations."""
-        registry = cls()
-        for config in configs:
-            registry.register(config)
-        return registry
-
-    def register(self, config: ProviderConfiguration) -> Provider[Any]:
-        """Create a pydantic-ai provider from ``config`` and store it by ``name``.
+    async def load(self, configs: Iterable[ProviderConfiguration]) -> None:
+        """Replace the registry contents with providers (and their models) from ``configs``.
 
         Raises:
-            ValueError: If ``name`` is already registered, ``type`` has no
-                backend mapping, or ``url`` / ``api_key`` are incompatible with
-                the backend provider.
+            ValueError: If two configs share a name, a ``type`` has no
+                pydantic-ai backend mapping, or ``url`` / ``api_key`` are
+                incompatible with the backend provider.
+            TypeError: If a provider's client type has no known way to list
+                models.
         """
-        if config.name in self._entries:
-            raise ValueError(f"Provider already registered: {config.name!r}")
+        providers: dict[str, Provider[Any]] = {}
+        model_kinds: dict[str, str] = {}
+        for config in configs:
+            if config.name in providers:
+                raise ValueError(f"Provider already registered: {config.name!r}")
+            providers[config.name] = _build_provider(config)
+            model_kinds[config.name] = _PROVIDER_MODEL_KIND_MAP[config.type]
 
-        backend = PROVIDER_BACKEND_MAP.get(config.type)
-        if backend is None:
-            raise ValueError(f"Unsupported provider type: {config.type!r}")
-
-        provider_cls = infer_provider_class(backend)
-        provider = provider_cls(**_provider_kwargs(config, provider_cls))
-        self._entries[config.name] = RegisteredProvider(
-            config=config, provider=provider
+        names = list(providers)
+        listings = await asyncio.gather(
+            *(
+                _list_models(name, providers[name], model_kinds[name])
+                for name in names
+            )
         )
-        return provider
+
+        self._providers = providers
+        self._models = dict(zip(names, listings))
 
     def get(self, name: str) -> Provider[Any]:
-        """Return the provider registered under ``name``.
+        """Return the pydantic-ai provider registered under ``name``.
 
         Raises:
             KeyError: If no provider with that name exists.
         """
-        return self._get_entry(name).provider
+        try:
+            return self._providers[name]
+        except KeyError as exc:
+            raise KeyError(f"Unknown provider: {name!r}") from exc
 
-    def get_model(
-        self,
-        name: str,
-        model_name: str,
-        *,
-        settings: Optional[ModelSettings] = None,
-    ) -> Model:
-        """Return a pydantic-ai :class:`~pydantic_ai.models.Model` for ``name``.
-
-        The model is constructed with the registered provider instance, using
-        pydantic-ai's model-kind rules for this Lightspeed provider type.
-
-        Parameters:
-            name: Registry key of the configured provider.
-            model_name: Upstream model identifier (e.g. ``gpt-4o``).
-            settings: Optional pydantic-ai :class:`~pydantic_ai.settings.ModelSettings`
-                applied as defaults on the returned model.
-
-        Returns:
-            A pydantic-ai ``Model`` ready to pass to ``Agent(...)``.
+    def get_models(self, name: str) -> list[Model]:
+        """Return the models available to the provider registered under ``name``.
 
         Raises:
             KeyError: If no provider with that name exists.
-            ValueError: If ``model_name`` is empty.
         """
-        if not model_name or not model_name.strip():
-            raise ValueError("model_name must be a non-empty string")
+        try:
+            return self._models[name]
+        except KeyError as exc:
+            raise KeyError(f"Unknown provider: {name!r}") from exc
 
-        entry = self._get_entry(name)
-        model_kind = PROVIDER_MODEL_KIND_MAP[entry.config.type]
-        provider = entry.provider
-        model = infer_model(
-            f"{model_kind}:{model_name.strip()}",
-            provider_factory=lambda _provider_name: provider,
-        )
-        return type(model)(model.model_name, provider=provider, settings=settings)
+    def get_model(self, provider: str, model: str) -> Model:
+        """Return the ``model`` registered for the provider named ``provider``.
+
+        Raises:
+            KeyError: If no provider named ``provider`` exists, or no model
+                named ``model`` is available for that provider.
+        """
+        for candidate in self.get_models(provider):
+            if candidate.model_name == model:
+                return candidate
+
+        raise KeyError(f"Unknown model {model!r} for provider {provider!r}")
 
     def __contains__(self, name: object) -> bool:
-        return isinstance(name, str) and name in self._entries
+        return isinstance(name, str) and name in self._providers
 
     def __len__(self) -> int:
-        return len(self._entries)
+        return len(self._providers)
 
     def __iter__(self) -> Iterator[str]:
-        return iter(self._entries)
-
-    def items(self) -> Iterator[tuple[str, Provider[Any]]]:
-        """Iterate ``(name, provider)`` pairs."""
-        return ((name, entry.provider) for name, entry in self._entries.items())
+        return iter(self._providers)
 
     @property
     def providers(self) -> Mapping[str, Provider[Any]]:
-        """Read-only view of registered providers."""
-        return {name: entry.provider for name, entry in self._entries.items()}
+        """Read-only view of registered providers, keyed by name."""
+        return dict(self._providers)
 
-    def _get_entry(self, name: str) -> RegisteredProvider:
-        try:
-            return self._entries[name]
-        except KeyError as exc:
-            raise KeyError(f"Unknown provider: {name!r}") from exc
+    @property
+    def models(self) -> Mapping[str, list[Model]]:
+        """Read-only view of each registered provider's available models."""
+        return dict(self._models)
+
+
+def _build_provider(config: ProviderConfiguration) -> Provider[Any]:
+    """Construct a pydantic-ai provider from a Lightspeed provider config."""
+    backend = _PROVIDER_BACKEND_MAP.get(config.type)
+    if backend is None:
+        raise ValueError(f"Unsupported provider type: {config.type!r}")
+
+    provider_cls = infer_provider_class(backend)
+    return provider_cls(**_provider_kwargs(config, provider_cls))
 
 
 def _provider_kwargs(
@@ -184,9 +170,64 @@ def _provider_kwargs(
         url = str(config.url)
         url_param = next((name for name in _URL_PARAM_NAMES if name in params), None)
         if url_param is None:
-            raise ValueError(
-                f"Provider type {config.type!r} does not accept a url"
-            )
+            raise ValueError(f"Provider type {config.type!r} does not accept a url")
         kwargs[url_param] = url
 
     return kwargs
+
+
+async def _list_models(
+    name: str, provider: Provider[Any], model_kind: str
+) -> list[Model]:
+    """List the models available to ``provider``, bound to it via ``model_kind``."""
+    model_ids = await _list_model_ids(name, provider)
+    return [
+        infer_model(f"{model_kind}:{model_id}", provider_factory=lambda _n: provider)
+        for model_id in model_ids
+    ]
+
+
+async def _list_model_ids(name: str, provider: Provider[Any]) -> list[str]:
+    """Dispatch model-ID listing to the handler for the provider's client type."""
+    client = provider.client
+
+    if isinstance(client, OpenAIClient):
+        return await _list_openai_compatible_model_ids(client)
+    if isinstance(client, GoogleClient):
+        return await _list_google_cloud_model_ids(client)
+    if isinstance(client, BedrockClient):
+        return await _list_bedrock_model_ids(client)
+
+    raise TypeError(
+        f"Don't know how to list models for client type {type(client).__name__!r} "
+        f"(provider {name!r})"
+    )
+
+
+async def _list_openai_compatible_model_ids(client: OpenAIClient) -> list[str]:
+    """List model IDs via an OpenAI-compatible client (openai, azure, litellm, vllm)."""
+    return sorted([model.id async for model in client.models.list()])
+
+
+async def _list_google_cloud_model_ids(client: GoogleClient) -> list[str]:
+    """List model IDs via the Google GenAI (Vertex AI) client."""
+    return sorted([model.name async for model in await client.aio.models.list()])
+
+
+async def _list_bedrock_model_ids(client: BedrockClient) -> list[str]:
+    """List Bedrock foundation model IDs available in the client's region.
+
+    ``client`` is the ``bedrock-runtime`` client the provider invokes models
+    through; foundation-model listing only exists on the separate ``bedrock``
+    control-plane API, so a sibling client is built for the same region.
+    Credentials are resolved via boto3's default provider chain, which does
+    not cover the bearer-token API keys ``BedrockProvider`` accepts via
+    ``api_key`` -- a bearer-token-only provider will fail to list models here.
+    """
+    control_client = boto3.client("bedrock", region_name=client.meta.region_name)
+    response = await asyncio.to_thread(control_client.list_foundation_models)
+    return sorted(
+        summary["modelId"]
+        for summary in response.get("modelSummaries", [])
+        if "modelId" in summary
+    )

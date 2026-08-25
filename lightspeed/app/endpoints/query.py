@@ -1,8 +1,9 @@
 """Handler for REST API call to provide an answer to a query.
 
 Minimal rewrite of the original Lightspeed ``/query`` endpoint. Inference goes
-through :func:`~lightspeed.src.agent.loader.load_agent` and pydantic-ai
-``Agent.run``. Flows that are not yet implemented are left as comments.
+through :meth:`~lightspeed.src.agent.factory.AgentFactory.create_agent` and
+pydantic-ai ``Agent.run``. Flows that are not yet implemented are left as
+comments.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic_ai.run import AgentRunResult
 
+from lightspeed.app.models.config import Configuration
 from lightspeed.app.models.requests.query import QueryRequest
 from lightspeed.app.models.responses.error import (
     InternalServerErrorResponse,
@@ -20,7 +22,7 @@ from lightspeed.app.models.responses.error import (
     UnprocessableEntityResponse,
 )
 from lightspeed.app.models.responses.success.query import QueryResponse
-from lightspeed.src.agent.loader import load_agent
+from lightspeed.src.agent.factory import AgentFactory
 from lightspeed.src.providers.registry import ProviderRegistry
 
 logger = logging.getLogger(__name__)
@@ -58,8 +60,8 @@ async def query_endpoint_handler(
     """Handle ``POST /query`` using a pydantic-ai agent.
 
     Implemented today:
-        - Resolve ``ProviderRegistry`` from app state
-        - ``load_agent`` + ``agent.run`` for the user query
+        - Resolve ``Configuration`` from app state
+        - ``AgentFactory.create_agent`` + ``agent.run`` for the user query
         - Return a minimal :class:`QueryResponse`
         - Structured error responses (``detail.response`` / ``detail.cause``)
 
@@ -69,47 +71,28 @@ async def query_endpoint_handler(
         - Conversation load/store, compaction, topic summary
         - Shield moderation, RAG, tools/MCP
     """
-    # check_configuration_loaded(configuration)  # configuration singleton not yet implemented
 
-    # started_at = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    # user_id, _, _skip_userid_check, token = auth
-
-    # await check_mcp_auth(configuration, mcp_headers, token, request.headers)
-    # check_tokens_available(configuration.quota_limiters, user_id)
-    # validate_model_provider_override(
-    #     query_request.model, query_request.provider, request.state.authorized_actions
-    # )
-    # validate_shield_ids_override(query_request, configuration)
-    # if query_request.attachments:
-    #     validate_attachments_metadata(query_request.attachments)
-
-    # user_conversation = None
-    # if query_request.conversation_id:
-    #     normalized_conv_id = normalize_conversation_id(query_request.conversation_id)
-    #     user_conversation = validate_and_retrieve_conversation(...)
-
-    # moderation_input = prepare_input(query_request)
-    # moderation_result = await run_shield_moderation(...)
-    # inline_rag_context = await build_rag_context(...)
-    # responses_params = await prepare_responses_params(...)
-    # compaction = await apply_compaction_blocking(...)
-
-    registry = _get_provider_registry(request)
+    _get_configuration(request)  # fail fast with 500 if the app wasn't configured
     provider_name, model_name = _resolve_provider_and_model(query_request)
 
     try:
-        agent = load_agent(
-            registry,
-            provider_name,
-            model_name,
+        agent = AgentFactory.create_agent(
+            provider=provider_name,
+            model=model_name,
             instructions=query_request.system_prompt,
         )
         run_result = await agent.run(query_request.query)
     except KeyError as exc:
-        error_response = NotFoundResponse(
-            resource="provider",
-            resource_id=provider_name,
-        )
+        if provider_name not in ProviderRegistry():
+            error_response = NotFoundResponse(
+                resource="provider",
+                resource_id=provider_name,
+            )
+        else:
+            error_response = NotFoundResponse(
+                resource="model",
+                resource_id=model_name,
+            )
         raise HTTPException(**error_response.model_dump()) from exc
     except ValueError as exc:
         error_response = UnprocessableEntityResponse(
@@ -162,18 +145,18 @@ def _build_query_response(
     )
 
 
-def _get_provider_registry(request: Request) -> ProviderRegistry:
-    """Return the :class:`ProviderRegistry` attached to the FastAPI app.
+def _get_configuration(request: Request) -> Configuration:
+    """Return the :class:`Configuration` attached to the FastAPI app.
 
     Expected to be set at startup, e.g.::
 
-        app.state.provider_registry = ProviderRegistry.from_configs(config.providers)
+        app.state.configuration = Configuration.model_validate(...)
     """
-    registry = getattr(request.app.state, "provider_registry", None)
-    if registry is None:
+    config = getattr(request.app.state, "configuration", None)
+    if config is None:
         error_response = InternalServerErrorResponse.configuration_not_loaded()
         raise HTTPException(**error_response.model_dump())
-    return registry
+    return config
 
 
 def _resolve_provider_and_model(query_request: QueryRequest) -> tuple[str, str]:

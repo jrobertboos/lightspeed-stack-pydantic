@@ -1,5 +1,5 @@
-"""Agent loading built on pydantic-ai and the provider registry."""
+"""Agent construction built on pydantic-ai."""
 
-from lightspeed.src.agent.loader import load_agent
+from lightspeed.src.agent.factory import AgentFactory
 
-__all__ = ["load_agent"]
+__all__ = ["AgentFactory"]
