@@ -11,12 +11,16 @@ dependencies = [
     "pydantic-ai>=2.13.0",
     "pydantic-ai-harness>=0.7.1",
     "pyyaml>=6.0.3",
+    "uvicorn>=0.51.0",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8.0",
 ]
+
+[project.scripts]
+lightspeed-stack = "lightspeed.main:main"
 
 [build-system]
 requires = ["hatchling"]

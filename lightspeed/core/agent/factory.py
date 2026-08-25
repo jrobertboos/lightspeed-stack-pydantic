@@ -1,7 +1,7 @@
 """Build pydantic-ai agents from the process-wide :class:`ProviderRegistry`.
 
 Providers and their available models are resolved once at startup by
-:meth:`~lightspeed.src.providers.registry.ProviderRegistry.load`. Building an
+:meth:`~lightspeed.core.providers.registry.ProviderRegistry.load`. Building an
 ``Agent`` here is just a lookup: no provider/model construction happens per
 request.
 """
@@ -12,7 +12,7 @@ from typing import Optional
 
 from pydantic_ai import Agent
 
-from lightspeed.src.providers.registry import ProviderRegistry
+from lightspeed.core.providers.registry import ProviderRegistry
 
 
 class AgentFactory:

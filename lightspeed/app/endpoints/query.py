@@ -1,7 +1,7 @@
 """Handler for REST API call to provide an answer to a query.
 
 Minimal rewrite of the original Lightspeed ``/query`` endpoint. Inference goes
-through :meth:`~lightspeed.src.agent.factory.AgentFactory.create_agent` and
+through :meth:`~lightspeed.core.agent.factory.AgentFactory.create_agent` and
 pydantic-ai ``Agent.run``. Flows that are not yet implemented are left as
 comments.
 """
@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from pydantic_ai.run import AgentRunResult
 
 from lightspeed.app.models.config import Configuration
@@ -22,8 +22,10 @@ from lightspeed.app.models.responses.error import (
     UnprocessableEntityResponse,
 )
 from lightspeed.app.models.responses.success.query import QueryResponse
-from lightspeed.src.agent.factory import AgentFactory
-from lightspeed.src.providers.registry import ProviderRegistry
+from lightspeed.core.agent.factory import AgentFactory
+from lightspeed.core.providers.registry import ProviderRegistry
+from lightspeed.core.config import LogicError
+from lightspeed.core.config import configuration as app_config
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["query"])
@@ -52,7 +54,6 @@ query_response: dict[int | str, dict[str, Any]] = {
 )
 # @authorize(Action.QUERY)  # authorization not yet implemented
 async def query_endpoint_handler(
-    request: Request,
     query_request: QueryRequest,
     # auth: Annotated[AuthTuple, Depends(get_auth_dependency())],  # auth not yet implemented
     # mcp_headers: McpHeaders = Depends(mcp_headers_dependency),  # MCP headers not yet implemented
@@ -60,7 +61,7 @@ async def query_endpoint_handler(
     """Handle ``POST /query`` using a pydantic-ai agent.
 
     Implemented today:
-        - Resolve ``Configuration`` from app state
+        - Resolve ``Configuration`` from the process-wide singleton
         - ``AgentFactory.create_agent`` + ``agent.run`` for the user query
         - Return a minimal :class:`QueryResponse`
         - Structured error responses (``detail.response`` / ``detail.cause``)
@@ -72,7 +73,7 @@ async def query_endpoint_handler(
         - Shield moderation, RAG, tools/MCP
     """
 
-    _get_configuration(request)  # fail fast with 500 if the app wasn't configured
+    _get_configuration()  # fail fast with 500 if the app wasn't configured
     provider_name, model_name = _resolve_provider_and_model(query_request)
 
     try:
@@ -145,18 +146,22 @@ def _build_query_response(
     )
 
 
-def _get_configuration(request: Request) -> Configuration:
-    """Return the :class:`Configuration` attached to the FastAPI app.
+def _get_configuration() -> Configuration:
+    """Return the loaded :class:`Configuration` from the process-wide singleton.
 
-    Expected to be set at startup, e.g.::
+    The FastAPI ``lifespan`` (see :mod:`lightspeed.app.main`) loads it before
+    the app starts serving traffic, so this should only raise if called
+    outside of a running app (e.g. a unit test that imports this module
+    without loading configuration first).
 
-        app.state.configuration = Configuration.model_validate(...)
+    Raises:
+        HTTPException: 500 if the configuration hasn't been loaded yet.
     """
-    config = getattr(request.app.state, "configuration", None)
-    if config is None:
+    try:
+        return app_config.configuration
+    except LogicError as exc:
         error_response = InternalServerErrorResponse.configuration_not_loaded()
-        raise HTTPException(**error_response.model_dump())
-    return config
+        raise HTTPException(**error_response.model_dump()) from exc
 
 
 def _resolve_provider_and_model(query_request: QueryRequest) -> tuple[str, str]:

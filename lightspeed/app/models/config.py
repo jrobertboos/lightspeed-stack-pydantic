@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, SecretStr
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, PositiveInt, SecretStr
 
 # Supported inference provider types.
 ProviderType = Literal[
@@ -72,6 +72,51 @@ class ProviderConfiguration(ConfigurationBase):
     )
 
 
+class ServiceConfiguration(ConfigurationBase):
+    """Service configuration.
+
+    Controls how the REST API service binds and how many Uvicorn worker
+    processes handle requests concurrently. TLS and CORS (present in the
+    original Lightspeed Stack) are not yet implemented.
+    """
+
+    host: str = Field(
+        "localhost",
+        title="Host",
+        description="Service hostname.",
+    )
+
+    port: PositiveInt = Field(
+        8080,
+        title="Port",
+        description="Service port.",
+    )
+
+    workers: PositiveInt = Field(
+        1,
+        title="Workers",
+        description="Number of Uvicorn worker processes.",
+    )
+
+    auth_enabled: bool = Field(
+        False,
+        title="Auth enabled",
+        description="Enable authentication. Not yet implemented.",
+    )
+
+    color_log: bool = Field(
+        True,
+        title="Color log",
+        description="Enable colorized console logging. Not yet implemented.",
+    )
+
+    access_log: bool = Field(
+        True,
+        title="Access log",
+        description="Enable Uvicorn access logging.",
+    )
+
+
 class Configuration(ConfigurationBase):
     """Root Lightspeed Stack configuration."""
 
@@ -81,8 +126,25 @@ class Configuration(ConfigurationBase):
         description="Name of the service.",
     )
 
+    service: ServiceConfiguration = Field(
+        default_factory=ServiceConfiguration,
+        title="Service",
+        description="REST API service configuration (host, port, workers, ...).",
+    )
+
     providers: list[ProviderConfiguration] = Field(
         default_factory=list,
         title="Providers",
         description="Configured LLM providers available to the runtime.",
     )
+
+    # Sections present in lightspeed-stack.yaml that are not yet implemented in
+    # this rewrite. Declared here (instead of relying on `extra="forbid"`
+    # rejecting them) so a full configuration file loads without error; each
+    # becomes a typed model as its feature lands.
+    authentication: Optional[Any] = Field(None, title="Authentication")
+    authorization: Optional[Any] = Field(None, title="Authorization")
+    knowledge: Optional[Any] = Field(None, title="Knowledge")
+    safety: Optional[Any] = Field(None, title="Safety")
+    mcp_servers: Optional[Any] = Field(None, title="MCP servers")
+    skills: Optional[Any] = Field(None, title="Skills")

@@ -851,6 +851,7 @@ dependencies = [
     { name = "pydantic-ai" },
     { name = "pydantic-ai-harness" },
     { name = "pyyaml" },
+    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
@@ -866,6 +867,7 @@ requires-dist = [
     { name = "pydantic-ai", specifier = ">=2.13.0" },
     { name = "pydantic-ai-harness", specifier = ">=0.7.1" },
     { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "uvicorn", specifier = ">=0.51.0" },
 ]
 
 [package.metadata.requires-dev]

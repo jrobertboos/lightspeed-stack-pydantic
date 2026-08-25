@@ -19,7 +19,11 @@ service:
 #       type: vllm
 #       url: http://localhost:8000/v1
 #       api_key: not-needed
-providers: []
+providers:
+  - name: openai
+    type: openai
+    url: https://api.openai.com/v1
+    api_key: sk-...
 
 # Authentication configuration
 authentication:
