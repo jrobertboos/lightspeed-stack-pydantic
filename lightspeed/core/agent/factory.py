@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Optional
 
 from pydantic_ai import Agent
+from pydantic_ai.models.test import TestModel
 
 from lightspeed.core.providers.registry import ProviderRegistry
 
@@ -21,27 +22,37 @@ class AgentFactory:
     @staticmethod
     def create_agent(
         *,
-        provider: str,
-        model: str,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
         instructions: Optional[str] = None,
         # no_tools / shield_ids / vector_store_ids will gate toolsets once
         # tools, safety, and RAG are wired into the rewrite.
     ) -> Agent[None, str]:
-        """Build an ``Agent`` for one request.
+        """Build an ``Agent``, bound to a real provider/model or (when both
+        are omitted) a throwaway agent for introspection only.
+
+        The ``/tools`` endpoint calls this with no ``provider``/``model`` to
+        get an agent with the same toolsets a real request agent would have,
+        purely to list them -- it never calls the model or runs a tool.
 
         Parameters:
             provider: Name of the configured provider to use (e.g. from
-                ``QueryRequest.provider``).
+                ``QueryRequest.provider``). Omit together with ``model`` to
+                get a harmless placeholder model instead of a real one.
             model: Upstream model identifier (e.g. from ``QueryRequest.model``).
             instructions: Optional system instructions for the agent (e.g.
                 from ``QueryRequest.system_prompt``).
 
         Returns:
-            An ``Agent`` bound to the resolved provider and model.
+            An ``Agent`` bound to the resolved provider and model, or to a
+            placeholder model if both ``provider`` and ``model`` are omitted.
 
         Raises:
             KeyError: If ``provider`` is not registered, or ``model`` is not
                 available for ``provider``.
         """
-        resolved_model = ProviderRegistry().get_model(provider, model)
+        if provider is None and model is None:
+            resolved_model = TestModel()
+        else:
+            resolved_model = ProviderRegistry().get_model(provider, model)
         return Agent(resolved_model, instructions=instructions)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
-from lightspeed.app.endpoints import health, models, query, root
+from lightspeed.app.endpoints import health, models, query, root, tools
 
 
 def include_routers(app: FastAPI) -> None:
@@ -12,7 +12,7 @@ def include_routers(app: FastAPI) -> None:
 
     Follows the original Lightspeed Stack layout: ``root`` and ``health`` are
     mounted without a version prefix, and versioned endpoints go under
-    ``/v1``. Endpoints not yet implemented in this rewrite (info, tools,
+    ``/v1``. Endpoints not yet implemented in this rewrite (info,
     conversations, MCP, etc.) will be added here as they land.
 
     Parameters:
@@ -23,3 +23,4 @@ def include_routers(app: FastAPI) -> None:
 
     app.include_router(query.router, prefix="/v1")
     app.include_router(models.router, prefix="/v1")
+    app.include_router(tools.router, prefix="/v1")
