@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Literal, Optional
 
 from pydantic import (
@@ -11,7 +12,6 @@ from pydantic import (
     Field,
     PositiveInt,
     SecretStr,
-    field_validator,
 )
 
 # Supported inference provider types.
@@ -127,19 +127,28 @@ class MCPServerConfiguration(ConfigurationBase):
         ),
     )
 
-    @field_validator("forward_headers")
-    @classmethod
-    def validate_forward_headers(cls, value: list[str]) -> list[str]:
-        """Reject blank header names and case-insensitive duplicates."""
-        seen: set[str] = set()
-        for header in value:
-            if not header.strip():
-                raise ValueError("forward_headers entries must not be blank")
-            lowered = header.lower()
-            if lowered in seen:
-                raise ValueError(f"Duplicate forward_headers entry: {header!r}")
-            seen.add(lowered)
-        return value
+
+class SkillsConfiguration(ConfigurationBase):
+    """Agent skills configuration.
+
+    Each path is a skill library: a directory whose immediate children
+    contain ``SKILL.md``. All paths become a single
+    :class:`~pydantic_ai_harness.skills.Skills` capability (see
+    :class:`~lightspeed.core.agent.tools.skills.factory.SkillsCapabilityFactory`).
+
+    YAML shape::
+
+        skills:
+          paths:
+            - /var/skills
+            - /opt/custom-skills
+    """
+
+    paths: list[Path] = Field(
+        default_factory=list,
+        title="Skill paths",
+        description="Paths to skill libraries (directories of skill packages).",
+    )
 
 
 class ServiceConfiguration(ConfigurationBase):
@@ -214,6 +223,14 @@ class Configuration(ConfigurationBase):
         description="Configured MCP servers available to agents as tools.",
     )
 
+    skills: Optional[SkillsConfiguration] = Field(
+        None,
+        title="Agent skills",
+        description=(
+            "Agent skills configuration. Specifies paths to skill libraries."
+        ),
+    )
+
     # Sections present in lightspeed-stack.yaml that are not yet implemented in
     # this rewrite. Declared here (instead of relying on `extra="forbid"`
     # rejecting them) so a full configuration file loads without error; each
@@ -222,4 +239,3 @@ class Configuration(ConfigurationBase):
     authorization: Optional[Any] = Field(None, title="Authorization")
     knowledge: Optional[Any] = Field(None, title="Knowledge")
     safety: Optional[Any] = Field(None, title="Safety")
-    skills: Optional[Any] = Field(None, title="Skills")

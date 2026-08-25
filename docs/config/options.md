@@ -106,3 +106,46 @@ mcp_servers:
     timeout: 30
 ```
 
+## Skills
+
+Agent skills are portable `SKILL.md` packages following the
+[Agent Skills](https://agentskills.io/specification) spec. Only paths listed
+here are available to agents; nothing is discovered from a default
+`.agents/skills` directory.
+
+All configured paths become one [`Skills` capability](https://pydantic.dev/docs/ai/harness/skills/)
+(`pydantic_ai_harness.skills.Skills`) -- see
+`lightspeed/core/agent/tools/skills/factory.py`'s `SkillsCapabilityFactory`
+and `lightspeed/app/models/config.py`'s `SkillsConfiguration`. The model first
+sees each skill's name and description; calling `load_capability` injects
+that skill's Markdown body.
+
+Each path must be a **library**: a directory whose immediate children contain
+`SKILL.md`. A path that points at a skill package itself is rejected.
+
+```yaml
+skills:
+  paths:
+    - <skill library path>
+```
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `paths` | no | Skill libraries (directories of skill packages) |
+
+Relative paths resolve from the process working directory. Discovery happens
+when the capability is built (each `AgentFactory.create_agent` call). Missing
+paths, invalid `SKILL.md` frontmatter, and duplicate skill names fail at
+that point.
+
+Harness `Skills` does not load bundled `references/` or `scripts/` files.
+
+Example:
+
+```yaml
+skills:
+  paths:
+    - /var/skills
+    - /opt/custom-skills
+```
+
