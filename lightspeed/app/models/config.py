@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from typing import Any, Literal, Optional
 
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, PositiveInt, SecretStr
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveInt,
+    SecretStr,
+    field_validator,
+)
 
 # Supported inference provider types.
 ProviderType = Literal[
@@ -70,6 +78,68 @@ class ProviderConfiguration(ConfigurationBase):
             "falls back to its standard environment variables."
         ),
     )
+
+
+class MCPServerConfiguration(ConfigurationBase):
+    """MCP (Model Context Protocol) server entry.
+
+    Each entry becomes an ``MCP`` capability (see
+    :class:`~lightspeed.core.agent.tools.mcp.factory.MCPCapabilityFactory`)
+    that gives the agent tools beyond what a provider's model exposes
+    natively. Only servers listed here are available to agents.
+
+    YAML shape::
+
+        mcp_servers:
+          - name: docs-search
+            url: http://docs-mcp:8000
+            timeout: 30
+            forward_headers:
+              - x-rh-identity
+    """
+
+    name: str = Field(
+        ...,
+        title="Server name",
+        description="Unique identifier for this MCP server.",
+        min_length=1,
+    )
+
+    url: AnyHttpUrl = Field(
+        ...,
+        title="Server URL",
+        description="URL of the MCP server.",
+    )
+
+    timeout: Optional[PositiveInt] = Field(
+        None,
+        title="Timeout",
+        description="Request timeout in seconds.",
+    )
+
+    forward_headers: list[str] = Field(
+        default_factory=list,
+        title="Forwarded headers",
+        description=(
+            "Header names forwarded verbatim from the incoming client "
+            "request to this MCP server (not yet implemented -- needs "
+            "per-request context that isn't wired up yet)."
+        ),
+    )
+
+    @field_validator("forward_headers")
+    @classmethod
+    def validate_forward_headers(cls, value: list[str]) -> list[str]:
+        """Reject blank header names and case-insensitive duplicates."""
+        seen: set[str] = set()
+        for header in value:
+            if not header.strip():
+                raise ValueError("forward_headers entries must not be blank")
+            lowered = header.lower()
+            if lowered in seen:
+                raise ValueError(f"Duplicate forward_headers entry: {header!r}")
+            seen.add(lowered)
+        return value
 
 
 class ServiceConfiguration(ConfigurationBase):
@@ -138,6 +208,12 @@ class Configuration(ConfigurationBase):
         description="Configured LLM providers available to the runtime.",
     )
 
+    mcp_servers: list[MCPServerConfiguration] = Field(
+        default_factory=list,
+        title="MCP servers",
+        description="Configured MCP servers available to agents as tools.",
+    )
+
     # Sections present in lightspeed-stack.yaml that are not yet implemented in
     # this rewrite. Declared here (instead of relying on `extra="forbid"`
     # rejecting them) so a full configuration file loads without error; each
@@ -146,5 +222,4 @@ class Configuration(ConfigurationBase):
     authorization: Optional[Any] = Field(None, title="Authorization")
     knowledge: Optional[Any] = Field(None, title="Knowledge")
     safety: Optional[Any] = Field(None, title="Safety")
-    mcp_servers: Optional[Any] = Field(None, title="MCP servers")
     skills: Optional[Any] = Field(None, title="Skills")

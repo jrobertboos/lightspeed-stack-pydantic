@@ -13,6 +13,8 @@ from typing import Optional
 from pydantic_ai import Agent
 from pydantic_ai.models.test import TestModel
 
+from lightspeed.core.agent.tools.mcp.factory import MCPCapabilityFactory
+from lightspeed.core.config import configuration
 from lightspeed.core.providers.registry import ProviderRegistry
 
 
@@ -26,7 +28,7 @@ class AgentFactory:
         model: Optional[str] = None,
         instructions: Optional[str] = None,
         # no_tools / shield_ids / vector_store_ids will gate toolsets once
-        # tools, safety, and RAG are wired into the rewrite.
+        # safety and RAG are wired into the rewrite.
     ) -> Agent[None, str]:
         """Build an ``Agent``, bound to a real provider/model or (when both
         are omitted) a throwaway agent for introspection only.
@@ -34,6 +36,11 @@ class AgentFactory:
         The ``/tools`` endpoint calls this with no ``provider``/``model`` to
         get an agent with the same toolsets a real request agent would have,
         purely to list them -- it never calls the model or runs a tool.
+
+        Every configured MCP server is attached as an ``MCP`` capability (see
+        :class:`~lightspeed.core.agent.tools.mcp.factory.MCPCapabilityFactory`),
+        so ``Configuration`` must already be loaded (the ``/tools`` and
+        ``/query`` endpoints both check this before calling here).
 
         Parameters:
             provider: Name of the configured provider to use (e.g. from
@@ -48,6 +55,7 @@ class AgentFactory:
             placeholder model if both ``provider`` and ``model`` are omitted.
 
         Raises:
+            RuntimeError: If ``Configuration`` hasn't been loaded yet.
             KeyError: If ``provider`` is not registered, or ``model`` is not
                 available for ``provider``.
         """
@@ -55,4 +63,8 @@ class AgentFactory:
             resolved_model = TestModel()
         else:
             resolved_model = ProviderRegistry().get_model(provider, model)
-        return Agent(resolved_model, instructions=instructions)
+
+        capabilities = MCPCapabilityFactory.build_capabilities(
+            configuration.configuration.mcp_servers
+        )
+        return Agent(resolved_model, instructions=instructions, capabilities=capabilities)

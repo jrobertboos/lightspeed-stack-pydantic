@@ -49,3 +49,60 @@ providers:
     type: watsonx
     api_key: ...
 ```
+
+## MCP
+
+MCP (Model Context Protocol) servers give the agent tools beyond what a
+provider's model exposes natively. Only servers listed here are available to
+agents; nothing from an external tool registry is discovered automatically.
+
+Each entry becomes an [`MCP` capability](https://ai.pydantic.dev/capabilities/)
+(`pydantic_ai.capabilities.MCP`), the recommended pydantic-ai entry point for
+MCP, backed by a locally-run `MCPToolset` -- see
+`lightspeed/core/agent/tools/mcp/factory.py`'s `MCPCapabilityFactory` and
+`lightspeed/app/models/config.py`'s `MCPServerConfiguration`. Its tools show
+up under a toolset labeled `mcp:<name>` (e.g. via `GET /tools`).
+
+```yaml
+mcp_servers:
+  - name: <server name>
+    url: <server url>
+    timeout: <seconds>
+    forward_headers:
+      - <incoming request header name>
+```
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `name` | yes | Unique server name |
+| `url` | yes | URL of the MCP server |
+| `timeout` | no | Request timeout in seconds |
+| `forward_headers` | no | Header names forwarded verbatim from the incoming client request (see below) |
+
+Sending custom headers (e.g. an auth token) to an MCP server isn't
+implemented yet.
+
+### `forward_headers`
+
+Header names listed here are copied from the incoming HTTP request and added
+to every call to that MCP server, unmodified -- useful when infrastructure in
+front of Lightspeed Stack (e.g. a gateway) injects headers like
+`x-rh-identity` that the MCP server needs for user identification. Header
+matching is case-insensitive and duplicates are rejected.
+
+Not yet implemented -- this needs the incoming request's headers threaded
+into the agent factory. A non-empty `forward_headers` raises
+`NotImplementedError` when the agent is built.
+
+Example:
+
+```yaml
+mcp_servers:
+  - name: docs-search
+    url: http://docs-mcp:8000
+
+  - name: internal-api
+    url: http://internal-api-mcp:8000
+    timeout: 30
+```
+
