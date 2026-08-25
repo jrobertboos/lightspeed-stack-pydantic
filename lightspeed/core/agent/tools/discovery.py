@@ -9,19 +9,13 @@ cheap enough to call on every ``GET /tools`` request.
 
 from __future__ import annotations
 
-from typing import Any, NamedTuple
+from typing import Any
 
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.test import TestModel
-from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.usage import RunUsage
 
-
-class AgentTool(NamedTuple):
-    """A tool definition paired with the label of the toolset it came from."""
-
-    toolset: str
-    definition: ToolDefinition
+from lightspeed.core.agent.schemas import AgentTool
 
 
 async def list_agent_tools(agent: Agent[Any, Any], *, deps: Any = None) -> list[AgentTool]:

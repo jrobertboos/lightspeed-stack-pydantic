@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from typing import Any, Optional
+from typing_extensions import Self
 
+from lightspeed.core.agent.schemas import AgentQuery
 from pydantic import BaseModel, ConfigDict, Field
+
+from pydantic_ai import AgentRunResult
 
 
 class QueryResponse(BaseModel):
@@ -39,3 +43,23 @@ class QueryResponse(BaseModel):
     tool_results: list[Any] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")
+
+    @classmethod
+    def from_agent_query(
+        cls,
+        agent_query: AgentQuery,
+    ) -> Self:
+        """Create a QueryResponse from an AgentQuery.
+
+        Args:
+            agent_query: The AgentQuery from a pydantic-ai agent execution.
+
+        Returns:
+            A QueryResponse with the conversation ID and response text populated.
+        """
+        return cls(
+            conversation_id=agent_query.run_result.conversation_id,
+            response=agent_query.run_result.output,
+            input_tokens=agent_query.run_result.usage.input_tokens,
+            output_tokens=agent_query.run_result.usage.output_tokens,
+        )

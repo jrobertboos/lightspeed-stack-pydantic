@@ -45,6 +45,12 @@ class QueryRequest(BaseModel):
         examples=["You are OpenShift assistant."],
     )
 
+    stream: Optional[bool] = Field(
+        False,
+        description="Whether to stream the response using Server-Sent Events (SSE)",
+        examples=[True, False],
+    )
+
     # Accepted for parity; not yet used by the rewrite endpoint.
     no_tools: Optional[bool] = Field(
         False,
@@ -72,4 +78,6 @@ class QueryRequest(BaseModel):
             raise ValueError("Provider must be specified if model is specified")
         if self.provider and not self.model:
             raise ValueError("Model must be specified if provider is specified")
+        if not self.provider and not self.model:
+            raise ValueError("Provider and model must be specified")
         return self

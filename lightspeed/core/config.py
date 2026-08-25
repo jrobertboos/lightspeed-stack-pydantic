@@ -31,10 +31,6 @@ CONFIG_PATH_ENV_VAR = "LIGHTSPEED_STACK_CONFIG_PATH"
 DEFAULT_CONFIGURATION_FILE = "lightspeed-stack.yaml"
 
 
-class LogicError(Exception):
-    """Error in application logic."""
-
-
 class AppConfig(metaclass=Singleton):
     """Singleton that loads and holds the Lightspeed Stack :class:`Configuration`."""
 
@@ -64,10 +60,10 @@ class AppConfig(metaclass=Singleton):
             The loaded :class:`Configuration`.
 
         Raises:
-            LogicError: If the configuration has not been loaded yet.
+            RuntimeError: If the configuration has not been loaded yet.
         """
         if self._configuration is None:
-            raise LogicError("logic error: configuration is not loaded")
+            raise RuntimeError("logic error: configuration is not loaded")
         return self._configuration
 
     @property
@@ -78,7 +74,7 @@ class AppConfig(metaclass=Singleton):
             The :class:`ServiceConfiguration` from the loaded configuration.
 
         Raises:
-            LogicError: If the configuration has not been loaded yet.
+            RuntimeError: If the configuration has not been loaded yet.
         """
         return self.configuration.service
 
