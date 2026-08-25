@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
-from lightspeed.app.endpoints import health, query, root
+from lightspeed.app.endpoints import health, models, query, root
 
 
 def include_routers(app: FastAPI) -> None:
@@ -22,3 +22,4 @@ def include_routers(app: FastAPI) -> None:
     app.include_router(health.router)
 
     app.include_router(query.router, prefix="/v1")
+    app.include_router(models.router, prefix="/v1")
