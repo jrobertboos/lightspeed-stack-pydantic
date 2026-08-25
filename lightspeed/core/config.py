@@ -21,7 +21,7 @@ from typing import Optional
 import yaml
 
 from lightspeed.app.models.config import Configuration, ServiceConfiguration
-from lightspeed.core.utils.types import Singleton
+from lightspeed.core.types import Singleton
 
 #: Environment variable used to pass the resolved configuration file path
 #: from the entrypoint to each Uvicorn worker process.

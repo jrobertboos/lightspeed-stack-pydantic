@@ -15,7 +15,7 @@ from pydantic_ai.models import Model, infer_model
 from pydantic_ai.providers import Provider, infer_provider_class
 
 from lightspeed.app.models.config import ProviderConfiguration, ProviderType
-from lightspeed.core.utils.types import Singleton
+from lightspeed.core.types import Singleton
 
 # Constructor kwargs used by pydantic-ai providers for the configured base URL.
 _URL_PARAM_NAMES = ("base_url", "api_base", "azure_endpoint")
