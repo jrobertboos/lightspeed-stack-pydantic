@@ -22,9 +22,10 @@ from pydantic_ai.capabilities import AgentCapability
 from pydantic_ai_harness.skills import Skills
 
 from lightspeed.app.models.config import SkillsConfiguration
+from lightspeed.core.agent.capability_factory import CapabilityFactory
 
 
-class SkillsCapabilityFactory:
+class SkillsCapabilityFactory(CapabilityFactory[Optional[SkillsConfiguration]]):
     """Builds :class:`~pydantic_ai_harness.skills.Skills` capabilities from configured paths."""
 
     @staticmethod

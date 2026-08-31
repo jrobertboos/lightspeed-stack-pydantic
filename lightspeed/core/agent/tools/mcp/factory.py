@@ -18,9 +18,10 @@ from pydantic_ai.capabilities import MCP, AgentCapability
 from pydantic_ai.mcp import MCPToolset
 
 from lightspeed.app.models.config import MCPServerConfiguration
+from lightspeed.core.agent.capability_factory import CapabilityFactory
 
 
-class MCPCapabilityFactory:
+class MCPCapabilityFactory(CapabilityFactory[Iterable[MCPServerConfiguration]]):
     """Builds :class:`~pydantic_ai.capabilities.MCP` capabilities from configured MCP servers."""
 
     @staticmethod
