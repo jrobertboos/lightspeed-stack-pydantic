@@ -13,6 +13,7 @@ from typing import Optional
 from pydantic_ai import Agent
 from pydantic_ai.models.test import TestModel
 
+from lightspeed.core.agent.knowledge.factory import KnowledgeCapabilityFactory
 from lightspeed.core.agent.tools.mcp.factory import MCPCapabilityFactory
 from lightspeed.core.agent.tools.skills.factory import SkillsCapabilityFactory
 from lightspeed.core.config import configuration
@@ -40,8 +41,10 @@ class AgentFactory:
 
         Every configured MCP server is attached as an ``MCP`` capability (see
         :class:`~lightspeed.core.agent.tools.mcp.factory.MCPCapabilityFactory`),
-        and configured skill paths as a ``Skills`` capability (see
+        configured skill paths as a ``Skills`` capability (see
         :class:`~lightspeed.core.agent.tools.skills.factory.SkillsCapabilityFactory`),
+        and configured knowledge sources as ``Knowledge`` capabilities (see
+        :class:`~lightspeed.core.agent.knowledge.factory.KnowledgeCapabilityFactory`),
         so ``Configuration`` must already be loaded (the ``/tools`` and
         ``/query`` endpoints both check this before calling here).
 
@@ -72,5 +75,8 @@ class AgentFactory:
         )
         capabilities.extend(
             SkillsCapabilityFactory.build_capabilities(configuration.configuration.skills)
+        )
+        capabilities.extend(
+            KnowledgeCapabilityFactory.build_capabilities(configuration.configuration.knowledge)
         )
         return Agent(resolved_model, instructions=instructions, capabilities=capabilities)

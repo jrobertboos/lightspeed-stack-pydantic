@@ -24,6 +24,14 @@ ProviderType = Literal[
     "vllm",
 ]
 
+# Supported knowledge (RAG) source backend types. Only the shape is
+# implemented so far -- none of these has a concrete
+# :class:`~lightspeed.core.agent.knowledge.store.VectorStore` builder yet, so
+# a configured source needs a store registered by hand via
+# :class:`~lightspeed.core.agent.knowledge.registry.KnowledgeStoreRegistry`
+# (see :mod:`lightspeed.core.agent.knowledge.factory`).
+KnowledgeSourceType = Literal["faiss", "pgvector", "okp"]
+
 
 class ConfigurationBase(BaseModel):
     """Base class for configuration models that rejects unknown fields."""
@@ -151,6 +159,152 @@ class SkillsConfiguration(ConfigurationBase):
     )
 
 
+class KnowledgeSourceConfiguration(ConfigurationBase):
+    """One knowledge (RAG) source entry.
+
+    Each entry becomes one or two :class:`~lightspeed.core.agent.knowledge.capability.Knowledge`
+    capabilities (see
+    :class:`~lightspeed.core.agent.knowledge.factory.KnowledgeCapabilityFactory`),
+    depending on whether ``name`` is listed under
+    :attr:`KnowledgeConfiguration.strategy`'s ``inline`` and/or ``tool`` lists.
+
+    ``type`` and ``config`` describe the backend a future
+    :class:`~lightspeed.core.agent.knowledge.store.VectorStore` builder would
+    connect to; there is no such builder yet, so a source is only usable once
+    something calls
+    :meth:`~lightspeed.core.agent.knowledge.registry.KnowledgeStoreRegistry.register`
+    for its ``name``.
+
+    YAML shape::
+
+        knowledge:
+          sources:
+            - name: product-docs
+              type: pgvector
+              config:
+                dsn: postgresql://...
+              embedding_model: openai:text-embedding-3-small
+              top_k: 5
+    """
+
+    name: str = Field(
+        ...,
+        title="Source name",
+        description="Unique identifier for this knowledge source.",
+        min_length=1,
+    )
+
+    type: KnowledgeSourceType = Field(
+        ...,
+        title="Source type",
+        description=(
+            "Backend type: faiss, pgvector, or okp. None has a built-in "
+            "VectorStore builder yet -- see KnowledgeSourceConfiguration."
+        ),
+    )
+
+    config: dict[str, Any] = Field(
+        default_factory=dict,
+        title="Backend configuration",
+        description=(
+            "Backend-specific connection settings (e.g. a pgvector DSN). "
+            "Not yet consumed by anything -- reserved for when `type` has a "
+            "VectorStore builder."
+        ),
+    )
+
+    embedding_model: str = Field(
+        ...,
+        title="Embedding model",
+        description=(
+            "'provider:model' embedding model identifier resolved via "
+            "pydantic_ai.embeddings.Embedder, e.g. "
+            "'openai:text-embedding-3-small'."
+        ),
+        min_length=1,
+    )
+
+    top_k: PositiveInt = Field(
+        5,
+        title="Top K",
+        description="Number of matches returned per knowledge search.",
+    )
+
+
+class KnowledgeStrategyConfiguration(ConfigurationBase):
+    """Assigns each knowledge source to one or both exposure modes.
+
+    A source named in neither list still defaults to ``'tool'`` mode (see
+    :class:`~lightspeed.core.agent.knowledge.factory.KnowledgeCapabilityFactory`);
+    listing it under both makes it available both ways at once.
+    """
+
+    inline: list[str] = Field(
+        default_factory=list,
+        title="Inline sources",
+        description=(
+            "Source names automatically searched and injected into context "
+            "on every model request."
+        ),
+    )
+
+    tool: list[str] = Field(
+        default_factory=list,
+        title="Tool sources",
+        description="Source names exposed as a model-callable search tool.",
+    )
+
+
+class RerankerConfiguration(ConfigurationBase):
+    """Reranker configuration. Not yet implemented.
+
+    Declared so a configuration file that sets it loads and validates, but
+    :class:`~lightspeed.core.agent.knowledge.factory.KnowledgeCapabilityFactory`
+    raises ``NotImplementedError`` if this is set.
+    """
+
+    model: str = Field(
+        ...,
+        title="Reranker model",
+        description="Reranker model identifier. Not yet implemented.",
+    )
+
+
+class KnowledgeConfiguration(ConfigurationBase):
+    """Knowledge (RAG) configuration.
+
+    YAML shape::
+
+        knowledge:
+          sources:
+            - name: product-docs
+              type: pgvector
+              config: {}
+              embedding_model: openai:text-embedding-3-small
+          strategy:
+            tool:
+              - product-docs
+    """
+
+    sources: list[KnowledgeSourceConfiguration] = Field(
+        default_factory=list,
+        title="Knowledge sources",
+        description="Configured knowledge sources available to agents.",
+    )
+
+    strategy: Optional[KnowledgeStrategyConfiguration] = Field(
+        None,
+        title="Strategy",
+        description="Assigns sources to inline and/or tool exposure modes.",
+    )
+
+    reranker: Optional[RerankerConfiguration] = Field(
+        None,
+        title="Reranker",
+        description="Reranker configuration. Not yet implemented.",
+    )
+
+
 class ServiceConfiguration(ConfigurationBase):
     """Service configuration.
 
@@ -231,11 +385,19 @@ class Configuration(ConfigurationBase):
         ),
     )
 
+    knowledge: Optional[KnowledgeConfiguration] = Field(
+        None,
+        title="Knowledge",
+        description=(
+            "Knowledge (RAG) configuration. Specifies knowledge sources and "
+            "how they're exposed to agents."
+        ),
+    )
+
     # Sections present in lightspeed-stack.yaml that are not yet implemented in
     # this rewrite. Declared here (instead of relying on `extra="forbid"`
     # rejecting them) so a full configuration file loads without error; each
     # becomes a typed model as its feature lands.
     authentication: Optional[Any] = Field(None, title="Authentication")
     authorization: Optional[Any] = Field(None, title="Authorization")
-    knowledge: Optional[Any] = Field(None, title="Knowledge")
     safety: Optional[Any] = Field(None, title="Safety")
