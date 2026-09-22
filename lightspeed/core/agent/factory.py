@@ -65,7 +65,7 @@ class AgentFactory:
         if provider is None and model is None:
             resolved_model = TestModel()
         else:
-            resolved_model = ProviderRegistry().get_model(provider, model)
+            resolved_model = ProviderRegistry().get_model(model, provider=provider)
 
         capabilities = MCPCapabilityFactory.build_capabilities(
             configuration.configuration.mcp_servers

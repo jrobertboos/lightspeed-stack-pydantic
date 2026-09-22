@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from typing import Any, Iterable, Iterator, Mapping
+from typing import Any, Iterable, Iterator, Mapping, Optional
 
 import boto3
 from botocore.client import BaseClient as BedrockClient
@@ -108,13 +108,30 @@ class ProviderRegistry(metaclass=Singleton):
         except KeyError as exc:
             raise KeyError(f"Unknown provider: {name!r}") from exc
 
-    def get_model(self, provider: str, model: str) -> Model:
+    def get_model(self, model: str, *, provider: Optional[str] = None) -> Model:
         """Return the ``model`` registered for the provider named ``provider``.
 
+        ``provider`` may be omitted and folded into ``model`` instead, as a single
+        ``"<provider>:<model>"`` string -- e.g. ``get_model("openai:gpt-4o")`` is
+        equivalent to ``get_model("gpt-4o", provider="openai")``. Convenient for config
+        fields that store the pair as one string (see
+        :class:`~lightspeed.app.models.config.QuestionValidityConfig`). ``provider`` must
+        be passed by keyword.
+
         Raises:
+            ValueError: If ``provider`` is omitted and ``model`` isn't a valid
+                ``"<provider>:<model>"`` string.
             KeyError: If no provider named ``provider`` exists, or no model
                 named ``model`` is available for that provider.
         """
+        if provider is None:
+            combined = model
+            provider, _, model = combined.partition(":")
+            if not provider or not model:
+                raise ValueError(
+                    f"model must be `<provider>:<model>` when provider is omitted, got {combined!r}"
+                )
+
         for candidate in self.get_models(provider):
             if candidate.model_name == model:
                 return candidate
