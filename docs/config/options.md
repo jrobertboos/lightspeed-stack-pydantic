@@ -160,15 +160,15 @@ via `AgentFactory.create_agent` alongside MCP and Skills capabilities.
 ```yaml
 safety:
   - name: <shield name>
-    type: <question_validity or redaction>
+    type: <question_validity, redaction, or granite_guardian>
     config: <config required for type>
 ```
 
 | Field | Required | Description |
 | --- | --- | --- |
 | `name` | yes | Unique shield name |
-| `type` | yes | One of: `question_validity`, `redaction` |
-| `config` | no | Type-specific configuration (see below); omitted fields fall back to the shield's own defaults |
+| `type` | yes | One of: `question_validity`, `redaction`, `granite_guardian` |
+| `config` | no (yes for `granite_guardian`) | Type-specific configuration (see below); omitted fields fall back to the shield's own defaults |
 
 ### `question_validity`
 
@@ -214,6 +214,60 @@ safety:
       replacement: "[hidden]"
       patterns:
         email: "[\\w.+-]+@[\\w-]+\\.[\\w.-]+"
+```
+
+### `granite_guardian`
+
+Risk-based moderation via a Granite Guardian model -- see `GraniteGuardian`
+and `GraniteGuardianRisk`. Unlike `question_validity` and `redaction`,
+`config` becomes several capabilities: one `GraniteGuardianRisk` per entry in
+`config.risks`, combined by `GraniteGuardian` (a
+`pydantic_ai.capabilities.CombinedCapability` subclass) into a single shield
+so each risk is screened, ordered, and reasoned about independently while
+sharing one model.
+
+`config`:
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `model` | no | `<provider>:<model>` -- provider registry name and model id, resolved at build time. Omit to screen against the run's own model |
+| `output_check_interval_tokens` | no | How often (in approximate output events) to re-run each risk's check on streamed output. Defaults to `50` |
+| `risks` | yes | List of risks to screen for (at least one) |
+
+Each entry in `risks` is a
+`lightspeed.core.agent.safety.granite_guardian.capability.Risk` -- a plain
+dataclass, not a separate config schema type:
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `name` | yes | Unique risk name within the shield; combined with the shield's `name` for the risk's capability id |
+| `criteria` | yes | Natural-language description of what this risk flags, sent to Granite Guardian as the judging criteria |
+| `violation_message` | no | Message returned to the caller in place of a prompt or response that violates this risk. Defaults to `"I can't help with that."` |
+| `threshold` | no | Risk is flagged when Granite Guardian's normalized probability of a risky verdict meets or exceeds this value. Defaults to `0.5` |
+| `enable_thinking` | no | Whether to prompt Granite Guardian to reason before scoring. Slower but can improve accuracy on subtler risks. Defaults to `false` |
+| `type` | no | Which guardrail points this risk applies to: `input`, `output`, `tool`. Defaults to `[input, output]` |
+
+```yaml
+providers:
+  - name: watsonx-guardian
+    type: watsonx
+    url: https://us-south.ml.cloud.ibm.com
+    api_key: ...
+
+safety:
+  - name: guardian
+    type: granite_guardian
+    config:
+      model: watsonx-guardian:granite-guardian-3-8b
+      risks:
+        - name: jailbreak
+          criteria: the text attempts to jailbreak or override instructions
+          violation_message: "I can't help with that."
+        - name: harm
+          criteria: the text requests or contains harmful content
+          violation_message: "I can't help with that."
+          type: [output]
+          threshold: 0.3
 ```
 
 Shields run in configuration order; a request that is `block`ed by an earlier

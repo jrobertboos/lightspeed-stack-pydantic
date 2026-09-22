@@ -15,6 +15,8 @@ from pydantic import (
     field_validator,
 )
 
+from lightspeed.core.agent.safety.granite_guardian.capability import Risk
+
 # Supported inference provider types.
 ProviderType = Literal[
     "openai",
@@ -221,6 +223,58 @@ class RedactionConfig(ConfigurationBase):
     )
 
 
+class GraniteGuardianConfig(ConfigurationBase):
+    """``config`` for a ``granite_guardian`` safety shield.
+
+    Describes the Granite Guardian model to screen with, plus the risks to screen for.
+    ``risks`` entries are :class:`~lightspeed.core.agent.safety.granite_guardian.capability.Risk`
+    directly (pydantic validates YAML/JSON mappings onto it like any other field), rather than
+    a separate config/schema type -- there's nothing this schema would otherwise add. Mapped
+    onto a :class:`~lightspeed.core.agent.safety.granite_guardian.capability.GraniteGuardian`
+    by :class:`~lightspeed.core.agent.safety.factory.SafetyCapabilityFactory`, which resolves
+    `model` (when set) via `ProviderRegistry`.
+    """
+
+    model: Optional[str] = Field(
+        None,
+        title="Model",
+        description=(
+            "Granite Guardian model to screen with, as `<provider>:<model>` (provider "
+            "registry name and model id, resolved at build time). Omit to screen against "
+            "the run's own model, the same way `question_validity.model` falls back."
+        ),
+        examples=["watsonx:granite-guardian-3-8b", "my-vllm:granite-guardian"],
+    )
+
+    @field_validator("model")
+    @classmethod
+    def validate_model(cls, value: Optional[str]) -> Optional[str]:
+        """Ensure `model` (when set) has the `<provider>:<model>` shape."""
+        if value is None:
+            return value
+        provider, _, model = value.partition(":")
+        if not provider or not model:
+            raise ValueError(f"model must be `<provider>:<model>`, got {value!r}")
+        return value
+
+    output_check_interval_tokens: int = Field(
+        50,
+        title="Output check interval",
+        description=(
+            "How often (in approximate output events) to re-run each risk's check on "
+            "streamed output. See `AbstractSafetyCapability.output_check_interval_tokens`."
+        ),
+        gt=0,
+    )
+
+    risks: list[Risk] = Field(
+        ...,
+        title="Risks",
+        description="Risks to screen for. Each becomes its own capability.",
+        min_length=1,
+    )
+
+
 class QuestionValiditySafetyConfiguration(ConfigurationBase):
     """A ``question_validity`` entry in ``safety``: an LLM-classified on/off-topic guard."""
 
@@ -267,8 +321,40 @@ class RedactionSafetyConfiguration(ConfigurationBase):
     )
 
 
+class GraniteGuardianSafetyConfiguration(ConfigurationBase):
+    """A ``granite_guardian`` entry in ``safety``: risk-based moderation via Granite Guardian.
+
+    Becomes a single combined capability holding one sub-capability per risk in
+    ``config.risks`` -- see
+    :class:`~lightspeed.core.agent.safety.granite_guardian.capability.GraniteGuardian`.
+    """
+
+    name: str = Field(
+        ...,
+        title="Shield name",
+        description="Unique identifier for this safety shield.",
+        min_length=1,
+    )
+
+    type: Literal["granite_guardian"] = Field(
+        ...,
+        title="Shield type",
+        description="Fixed to `granite_guardian` for this shield type.",
+    )
+
+    config: GraniteGuardianConfig = Field(
+        ...,
+        title="Shield config",
+        description="Connection details and risk definitions for the `granite_guardian` shield.",
+    )
+
+
 SafetyCapabilityConfiguration = Annotated[
-    Union[QuestionValiditySafetyConfiguration, RedactionSafetyConfiguration],
+    Union[
+        QuestionValiditySafetyConfiguration,
+        RedactionSafetyConfiguration,
+        GraniteGuardianSafetyConfiguration,
+    ],
     Field(discriminator="type"),
 ]
 """A single ``safety`` list entry, discriminated on ``type``.
@@ -277,7 +363,7 @@ YAML shape::
 
     safety:
       - name: <name of shield>
-        type: <question_validity or redaction>
+        type: <question_validity, redaction, or granite_guardian>
         config: <config required for type>
 """
 
