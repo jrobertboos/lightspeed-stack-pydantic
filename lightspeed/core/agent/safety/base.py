@@ -6,17 +6,18 @@ import dataclasses
 from abc import abstractmethod
 from collections.abc import AsyncIterable
 from dataclasses import dataclass, field
-from typing import Iterable, Literal, Optional
+from typing import Any, Iterable, Literal, Optional
 
 from pydantic_ai.capabilities import (
     AbstractCapability,
     WrapModelRequestHandler,
 )
-from pydantic_ai.exceptions import ContentFilterError, SkipModelRequest, UserError
+from pydantic_ai.exceptions import SkipModelRequest, UserError
 from pydantic_ai.messages import (
     AgentStreamEvent,
     ModelResponse,
     PartDeltaEvent,
+    PartEndEvent,
     PartStartEvent,
     TextPart,
     TextPartDelta,
@@ -24,9 +25,18 @@ from pydantic_ai.messages import (
 from pydantic_ai.models import ModelRequestContext
 from pydantic_ai.tools import AgentDepsT
 from pydantic_ai import RunContext
+from pydantic_ai._agent_graph import GraphAgentState
+from pydantic_ai.run import AgentRunResult
 
 from lightspeed.core.agent.utils import extract_latest_message_text, replace_latest_message
 
+
+class OutputBlocked(BaseException):
+    """The output was blocked by a safety guard."""
+
+    def __init__(self, reason: Optional[str] = None) -> None:
+        super().__init__(reason)
+        self.reason = reason
 
 @dataclass
 class OutputState:
@@ -44,7 +54,13 @@ class OutputState:
         self.events.append(event)
 
     def ready(self, interval: int) -> bool:
-        """Whether enough events have accumulated to run the next check."""
+        """Whether enough events have accumulated to run the next check.
+
+        Also ready as soon as a part finishes, so a completed part is checked promptly instead of
+        waiting on the next part's events to cross `interval`.
+        """
+        if self.events and isinstance(self.events[-1], PartEndEvent):
+            return True
         return len(self.events) >= interval
 
     def text(self) -> str:
@@ -103,6 +119,32 @@ class AbstractSafetyCapability(AbstractCapability[AgentDepsT]):
     async def evaluate(self, prompt: str) -> GuardrailResult:
         """Evaluate safety on prompt"""
 
+    async def on_run_error(
+        self,
+        ctx: RunContext[AgentDepsT],
+        *,
+        error: BaseException,
+    ) -> AgentRunResult[Any]:
+        """Recover a run blocked by an output safety guard.
+
+        `wrap_run_event_stream` raises `OutputBlocked` when `evaluate` blocks streamed output;
+        that error propagates up through the run and lands here. Convert it into a successful
+        `AgentRunResult` carrying the guard's message as the output, instead of letting the
+        exception surface to the caller. Any other error is re-raised unchanged.
+        """
+        if isinstance(error, OutputBlocked):
+            return AgentRunResult(
+                output=error.reason or 'Response blocked by a safety guard.',
+                _state=GraphAgentState(
+                    message_history=ctx.messages,
+                    usage=ctx.usage,
+                    run_id=ctx.run_id,
+                    conversation_id=ctx.conversation_id,
+                    metadata=ctx.metadata,
+                ),
+            )
+        raise error
+
     async def wrap_run_event_stream(
         self,
         ctx: RunContext[AgentDepsT],
@@ -118,9 +160,19 @@ class AbstractSafetyCapability(AbstractCapability[AgentDepsT]):
                 case 'allow':
                     return events
                 case 'block':
-                    raise ContentFilterError(result.message or 'Response blocked by a safety guard.')
+                    raise OutputBlocked(result.message)
                 case 'replace':
                     return [PartStartEvent(index=0, part=TextPart(content=str(result.replacement)))]
+
+        async def drain() -> None:
+            """Exhaust `stream` without processing it further.
+
+            Called after a block verdict instead of cancelling the stream, so the model still
+            finishes its request and the provider's trailing usage chunk lands in `ctx.usage` --
+            cancelling here would abandon the request before that arrives, leaving usage at zero.
+            """
+            async for _ in stream:
+                pass
 
         if 'output' in self.type:
             state: OutputState = OutputState()
@@ -130,11 +182,16 @@ class AbstractSafetyCapability(AbstractCapability[AgentDepsT]):
                     if state.ready(self.output_check_interval_tokens):
                         for released in await release(state):
                             yield released
+            except OutputBlocked:
+                await drain()
+                raise
             finally:
                 aclose = getattr(stream, 'aclose', None)
                 if aclose is not None:
                     await aclose()
-
+        else:
+            async for event in stream:
+                yield event
 
     async def wrap_model_request(
         self,
