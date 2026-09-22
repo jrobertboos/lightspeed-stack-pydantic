@@ -149,3 +149,72 @@ skills:
     - /opt/custom-skills
 ```
 
+## Safety
+
+Safety shields guard agent input (the user's prompt) and, for some shield
+types, streamed model output. Each entry becomes one safety capability -- see
+`lightspeed/core/agent/safety/factory.py`'s `SafetyCapabilityFactory` and
+`lightspeed/app/models/config.py`'s `SafetyCapabilityConfiguration` -- built
+via `AgentFactory.create_agent` alongside MCP and Skills capabilities.
+
+```yaml
+safety:
+  - name: <shield name>
+    type: <question_validity or redaction>
+    config: <config required for type>
+```
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `name` | yes | Unique shield name |
+| `type` | yes | One of: `question_validity`, `redaction` |
+| `config` | no | Type-specific configuration (see below); omitted fields fall back to the shield's own defaults |
+
+### `question_validity`
+
+An LLM-classified on/off-topic guard for inbound prompts -- see
+`QuestionValidityCapability`. Rejects prompts the classifier judges invalid,
+off-topic, or an attempt to override instructions.
+
+`config`:
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `model` | no | `<provider>:<model>` -- provider registry name and model id, resolved at build time. Omit to classify against the run's own model |
+| `invalid_question_response` | no | Message returned to the caller in place of a rejected prompt |
+| `classifier_instructions` | no | System prompt sent with the classification request |
+
+```yaml
+safety:
+  - name: on-topic
+    type: question_validity
+    config:
+      model: openai:gpt-4o-mini
+      invalid_question_response: "I can only answer questions about our product."
+```
+
+### `redaction`
+
+Regex-based PII redaction for prompts and model output -- see
+`RedactionCapability`. Never blocks a request; it only rewrites matched
+spans. Guards both prompt and output by default.
+
+`config`:
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `patterns` | no | Named regex patterns to redact, keyed by a label. Defaults to a small set of common PII patterns (email, SSN, credit card, phone) |
+| `replacement` | no | Text substituted in place of each match. Defaults to `[REDACTED]` |
+
+```yaml
+safety:
+  - name: pii-redaction
+    type: redaction
+    config:
+      replacement: "[hidden]"
+      patterns:
+        email: "[\\w.+-]+@[\\w-]+\\.[\\w.-]+"
+```
+
+Shields run in configuration order; a request that is `block`ed by an earlier
+shield never reaches a later one.

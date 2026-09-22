@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Annotated, Any, Literal, Optional, Union
 
 from pydantic import (
     AnyHttpUrl,
@@ -12,6 +12,7 @@ from pydantic import (
     Field,
     PositiveInt,
     SecretStr,
+    field_validator,
 )
 
 # Supported inference provider types.
@@ -151,6 +152,136 @@ class SkillsConfiguration(ConfigurationBase):
     )
 
 
+class QuestionValidityConfig(ConfigurationBase):
+    """``config`` for a ``question_validity`` safety shield.
+
+    Mirrors the constructor arguments of
+    :class:`~lightspeed.core.agent.safety.question_validity.capability.QuestionValidityCapability`.
+    Fields left unset (``None``) fall back to that capability's own defaults, so nothing here
+    needs to duplicate them.
+    """
+
+    model: Optional[str] = Field(
+        None,
+        title="Model",
+        description=(
+            "Model used to classify prompts, as `<provider>:<model>` (provider registry name "
+            "and model id, resolved at build time). Omit to classify against the run's own "
+            "model."
+        ),
+        examples=["openai:gpt-4o", "my-vllm:llama-3.1-8b"],
+    )
+
+    invalid_question_response: Optional[str] = Field(
+        None,
+        title="Invalid question response",
+        description="Message returned to the caller in place of a rejected prompt.",
+    )
+
+    classifier_instructions: Optional[str] = Field(
+        None,
+        title="Classifier instructions",
+        description="System prompt sent with the classification request used to judge a prompt.",
+    )
+
+    @field_validator("model")
+    @classmethod
+    def validate_model(cls, value: Optional[str]) -> Optional[str]:
+        """Ensure `model` (when set) has the `<provider>:<model>` shape."""
+        if value is None:
+            return value
+        provider, _, model = value.partition(":")
+        if not provider or not model:
+            raise ValueError(f"model must be `<provider>:<model>`, got {value!r}")
+        return value
+
+
+class RedactionConfig(ConfigurationBase):
+    """``config`` for a ``redaction`` safety shield.
+
+    Mirrors the constructor arguments of
+    :class:`~lightspeed.core.agent.safety.redaction.capability.RedactionCapability`.
+    Fields left unset (``None``) fall back to that capability's own defaults, so nothing here
+    needs to duplicate them.
+    """
+
+    patterns: Optional[dict[str, str]] = Field(
+        None,
+        title="Patterns",
+        description=(
+            "Named regex patterns to redact, keyed by a label used only for readability. "
+            "Defaults to a small set of common PII patterns (email, SSN, credit card, phone)."
+        ),
+    )
+
+    replacement: Optional[str] = Field(
+        None,
+        title="Replacement",
+        description="Text substituted in place of each match.",
+    )
+
+
+class QuestionValiditySafetyConfiguration(ConfigurationBase):
+    """A ``question_validity`` entry in ``safety``: an LLM-classified on/off-topic guard."""
+
+    name: str = Field(
+        ...,
+        title="Shield name",
+        description="Unique identifier for this safety shield.",
+        min_length=1,
+    )
+
+    type: Literal["question_validity"] = Field(
+        ...,
+        title="Shield type",
+        description="Fixed to `question_validity` for this shield type.",
+    )
+
+    config: QuestionValidityConfig = Field(
+        default_factory=QuestionValidityConfig,
+        title="Shield config",
+        description="Configuration for the `question_validity` shield.",
+    )
+
+
+class RedactionSafetyConfiguration(ConfigurationBase):
+    """A ``redaction`` entry in ``safety``: pattern-based text redaction."""
+
+    name: str = Field(
+        ...,
+        title="Shield name",
+        description="Unique identifier for this safety shield.",
+        min_length=1,
+    )
+
+    type: Literal["redaction"] = Field(
+        ...,
+        title="Shield type",
+        description="Fixed to `redaction` for this shield type.",
+    )
+
+    config: RedactionConfig = Field(
+        default_factory=RedactionConfig,
+        title="Shield config",
+        description="Configuration for the `redaction` shield.",
+    )
+
+
+SafetyCapabilityConfiguration = Annotated[
+    Union[QuestionValiditySafetyConfiguration, RedactionSafetyConfiguration],
+    Field(discriminator="type"),
+]
+"""A single ``safety`` list entry, discriminated on ``type``.
+
+YAML shape::
+
+    safety:
+      - name: <name of shield>
+        type: <question_validity or redaction>
+        config: <config required for type>
+"""
+
+
 class ServiceConfiguration(ConfigurationBase):
     """Service configuration.
 
@@ -231,6 +362,14 @@ class Configuration(ConfigurationBase):
         ),
     )
 
+    safety: list[SafetyCapabilityConfiguration] = Field(
+        default_factory=list,
+        title="Safety",
+        description=(
+            "Configured safety shields (question_validity, redaction, ...) available to agents."
+        ),
+    )
+
     # Sections present in lightspeed-stack.yaml that are not yet implemented in
     # this rewrite. Declared here (instead of relying on `extra="forbid"`
     # rejecting them) so a full configuration file loads without error; each
@@ -238,4 +377,3 @@ class Configuration(ConfigurationBase):
     authentication: Optional[Any] = Field(None, title="Authentication")
     authorization: Optional[Any] = Field(None, title="Authorization")
     knowledge: Optional[Any] = Field(None, title="Knowledge")
-    safety: Optional[Any] = Field(None, title="Safety")
