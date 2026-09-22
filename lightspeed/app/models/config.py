@@ -232,26 +232,23 @@ class GraniteGuardianConfig(ConfigurationBase):
     a separate config/schema type -- there's nothing this schema would otherwise add. Mapped
     onto a :class:`~lightspeed.core.agent.safety.granite_guardian.capability.GraniteGuardian`
     by :class:`~lightspeed.core.agent.safety.factory.SafetyCapabilityFactory`, which resolves
-    `model` (when set) via `ProviderRegistry`.
+    `model` via `ProviderRegistry`.
     """
 
-    model: Optional[str] = Field(
-        None,
+    model: str = Field(
         title="Model",
         description=(
             "Granite Guardian model to screen with, as `<provider>:<model>` (provider "
-            "registry name and model id, resolved at build time). Omit to screen against "
-            "the run's own model, the same way `question_validity.model` falls back."
+            "registry name and model id, resolved at build time). Required -- unlike "
+            "`question_validity.model`, there's no run-model fallback."
         ),
         examples=["watsonx:granite-guardian-3-8b", "my-vllm:granite-guardian"],
     )
 
     @field_validator("model")
     @classmethod
-    def validate_model(cls, value: Optional[str]) -> Optional[str]:
-        """Ensure `model` (when set) has the `<provider>:<model>` shape."""
-        if value is None:
-            return value
+    def validate_model(cls, value: str) -> str:
+        """Ensure `model` has the `<provider>:<model>` shape."""
         provider, _, model = value.partition(":")
         if not provider or not model:
             raise ValueError(f"model must be `<provider>:<model>`, got {value!r}")
