@@ -3,7 +3,7 @@ from typing import AsyncIterator, Optional, Tuple
 
 from lightspeed.app.models.responses.error import InternalServerErrorResponse
 from lightspeed.app.models.responses.success.stream import ErrorStreamPayload, StartStreamPayload
-from lightspeed.core.agent import AgentFactory
+from lightspeed.core.agent.factory import AgentFactory
 from lightspeed.core.agent.schemas import AgentQuery, AgentTool
 from lightspeed.core.agent.streaming import StreamState, dispatch_stream_event
 from lightspeed.core.agent.tools import list_agent_tools
