@@ -54,56 +54,36 @@ class StartStreamPayload(StreamPayloadBase):
         )
 
 
-class TokenChunkData(BaseModel):
-    """Structured data for token and turn-complete stream lines."""
+class TextEventData(BaseModel):
+    """Structured data for text stream lines."""
 
     id: int
-    token: str
+    text: str
 
 
-class TokenStreamPayload(StreamPayloadBase):
+class TextStreamPayload(StreamPayloadBase):
     """SSE token delta (``event: "token"``)."""
 
-    event: Literal["token"] = "token"
-    data: TokenChunkData
+    event: Literal["text"] = "text"
+    data: TextEventData
 
     @classmethod
-    def create(cls, *, chunk_id: int, token: str) -> Self:
+    def create(cls, *, id: int, text: str) -> Self:
         """Create a token stream payload.
 
         Args:
-            chunk_id: Monotonic chunk identifier for the token delta.
+            id: Monotonic chunk identifier for the token delta.
             token: Token text for the delta.
 
         Returns:
             Token stream payload instance.
         """
-        return cls(data=TokenChunkData(id=chunk_id, token=token))
-
-
-class TurnCompleteStreamPayload(StreamPayloadBase):
-    """SSE turn completion (same data shape as token)."""
-
-    event: Literal["turn_complete"] = "turn_complete"
-    data: TokenChunkData
-
-    @classmethod
-    def create(cls, *, chunk_id: int, token: str) -> Self:
-        """Create a turn-complete stream payload.
-
-        Args:
-            chunk_id: Monotonic chunk identifier for the final text.
-            token: Full assistant text for the completed turn.
-
-        Returns:
-            Turn-complete stream payload instance.
-        """
-        return cls(data=TokenChunkData(id=chunk_id, token=token))
-
+        return cls(data=TextEventData(id=id, text=text))
 
 class EndEventData(BaseModel):
     """Nested data for ``event: "end"``."""
 
+    output: str
     input_tokens: int
     output_tokens: int
 
@@ -115,7 +95,7 @@ class EndStreamPayload(StreamPayloadBase):
     data: EndEventData
 
     @classmethod
-    def create(cls, *, input_tokens: int, output_tokens: int) -> Self:
+    def create(cls, *, output: str, input_tokens: int, output_tokens: int) -> Self:
         """Create an end-of-stream payload.
 
         Args:
@@ -126,7 +106,7 @@ class EndStreamPayload(StreamPayloadBase):
             End stream payload instance.
         """
         return cls(
-            data=EndEventData(input_tokens=input_tokens, output_tokens=output_tokens)
+            data=EndEventData(output=output, input_tokens=input_tokens, output_tokens=output_tokens)
         )
 
 
@@ -179,8 +159,7 @@ class ErrorStreamPayload(StreamPayloadBase):
 
 StreamEventPayload = (
     StartStreamPayload
-    | TokenStreamPayload
-    | TurnCompleteStreamPayload
+    | TextStreamPayload
     | EndStreamPayload
     | ErrorStreamPayload
 )

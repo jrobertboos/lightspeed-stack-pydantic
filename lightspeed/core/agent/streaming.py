@@ -13,6 +13,7 @@ import logging
 from dataclasses import dataclass, field
 from functools import singledispatch
 from typing import Optional, Union
+import uuid
 
 from pydantic_ai import (
     AgentRunResultEvent,
@@ -24,9 +25,9 @@ from pydantic_ai import (
 from pydantic_ai.messages import AgentStreamEvent
 
 from lightspeed.app.models.responses.success.stream import (
+    EndStreamPayload,
     StreamEventPayload,
-    TokenStreamPayload,
-    TurnCompleteStreamPayload,
+    TextStreamPayload,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,13 +47,19 @@ class StreamState:
     Attributes:
         chunk_id: Monotonic SSE chunk index.
         text_parts: Buffered text deltas before ``turn_complete``.
+        conversation_id: Conversation id for the stream; generated when omitted.
     """
 
     chunk_id: int = 0
     text_parts: list[str] = field(default_factory=list)
+    conversation_id: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if self.conversation_id is None:
+            self.conversation_id = str(uuid.uuid4())
 
 
-def _process_token(state: StreamState, text: str) -> TokenStreamPayload:
+def process_text(state: StreamState, text: str) -> TextStreamPayload:
     """Append text to state and build a token stream payload.
 
     Args:
@@ -63,7 +70,7 @@ def _process_token(state: StreamState, text: str) -> TokenStreamPayload:
         Token stream payload containing the emitted token chunk.
     """
     state.text_parts.append(text)
-    payload = TokenStreamPayload.create(chunk_id=state.chunk_id, token=text)
+    payload = TextStreamPayload.create(id=state.chunk_id, text=text)
     state.chunk_id += 1
     return payload
 
@@ -89,17 +96,17 @@ def dispatch_stream_event(
 @dispatch_stream_event.register
 def _(event: AgentRunResultEvent, state: StreamState) -> Optional[StreamEventPayload]:
     """Handle the final run result event and emit the completion payload."""
-    final_text = event.result.output or "".join(state.text_parts)
-    payload = TurnCompleteStreamPayload.create(chunk_id=state.chunk_id, token=final_text)
-    state.chunk_id += 1
-    return payload
-
+    return EndStreamPayload.create(
+        input_tokens=event.result.usage.input_tokens,
+        output_tokens=event.result.usage.output_tokens,
+        output=event.result.output or "".join(state.text_parts),
+    )
 
 @dispatch_stream_event.register
 def _(event: PartStartEvent, state: StreamState) -> Optional[StreamEventPayload]:
     """Handle the start of a model response part."""
     if isinstance(event.part, TextPart):
-        return _process_token(state, event.part.content)
+        return process_text(state, event.part.content)
     logger.debug("Ignoring part start kind=%s", event.part.part_kind)
     return None
 
@@ -108,6 +115,6 @@ def _(event: PartStartEvent, state: StreamState) -> Optional[StreamEventPayload]
 def _(event: PartDeltaEvent, state: StreamState) -> Optional[StreamEventPayload]:
     """Handle an incremental update to a model response part."""
     if isinstance(event.delta, TextPartDelta):
-        return _process_token(state, event.delta.content_delta)
+        return process_text(state, event.delta.content_delta)
     logger.debug("Ignoring part delta kind=%s", event.delta.part_delta_kind)
     return None
