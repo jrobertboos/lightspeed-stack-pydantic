@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Literal, Mapping, Sequence
+from typing import Literal, Mapping, Optional, Sequence
 
 from pydantic_ai.tools import AgentDepsT
 
@@ -42,21 +42,35 @@ class RedactionCapability(AbstractSafetyCapability[AgentDepsT]):
     by default, so PII typed by the user and PII a model happens to generate are both caught.
     """
 
-    type: Sequence[Literal["input", "output"]] = field(default_factory=list)
+    type: Sequence[Literal["input", "output"]] = field(
+        default_factory=lambda: ["input"]
+    )
     """Defaults to guarding both the user's prompt and the model's streamed output."""
 
-    patterns: Mapping[str, str] = field(default_factory=lambda: dict(DEFAULT_PATTERNS))
+    patterns: Optional[Mapping[str, str]] = None
     """Named regex patterns to redact, keyed by a label used only for readability.
 
-    Defaults to :data:`DEFAULT_PATTERNS`. Compiled once in :meth:`__post_init__`, so
-    replacing this after construction (rather than passing it to `__init__`) won't take
-    effect -- build a new instance instead.
+    `None` (the default) falls back to :data:`DEFAULT_PATTERNS` in :meth:`__post_init__`,
+    where it's also compiled once -- replacing this after construction (rather than passing
+    it to `__init__`) won't take effect, build a new instance instead.
     """
 
-    replacement: str = DEFAULT_REPLACEMENT
-    """Text substituted in place of each match."""
+    replacement: Optional[str] = None
+    """Text substituted in place of each match. `None` (the default) falls back to
+    :data:`DEFAULT_REPLACEMENT` in `__post_init__`."""
 
     def __post_init__(self) -> None:
+        """Fill unset fields from their module-level defaults, then compile `patterns`.
+
+        Defaults filled in here rather than as plain dataclass field defaults so callers --
+        e.g. `SafetyCapabilityFactory`, forwarding a config field that's `None` when unset --
+        can pass `None` through and still get the default, instead of having to omit the
+        keyword argument entirely to avoid overriding it.
+        """
+        if self.patterns is None:
+            self.patterns = dict(DEFAULT_PATTERNS)
+        if self.replacement is None:
+            self.replacement = DEFAULT_REPLACEMENT
         self._compiled: tuple[re.Pattern[str], ...] = tuple(
             re.compile(pattern) for pattern in self.patterns.values()
         )

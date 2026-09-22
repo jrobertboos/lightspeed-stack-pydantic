@@ -99,7 +99,7 @@ def _(event: AgentRunResultEvent, state: StreamState) -> Optional[StreamEventPay
     return EndStreamPayload.create(
         input_tokens=event.result.usage.input_tokens,
         output_tokens=event.result.usage.output_tokens,
-        output=event.result.output or "".join(state.text_parts),
+        output=event.result.output,
     )
 
 @dispatch_stream_event.register

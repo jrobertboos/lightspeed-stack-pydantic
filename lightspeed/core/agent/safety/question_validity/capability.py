@@ -43,7 +43,7 @@ class QuestionValidityCapability(AbstractSafetyCapability[AgentDepsT]):
     :meth:`evaluate` directly for a standalone check.
     """
 
-    type: Sequence[Literal['input']] = field(default_factory=list)
+    type: Sequence[Literal['input']] = field(default_factory=lambda: ['input'])
     """Fixed to `'input'`: this capability only ever classifies the user's prompt, never
     streamed model output."""
 
@@ -52,11 +52,26 @@ class QuestionValidityCapability(AbstractSafetyCapability[AgentDepsT]):
     only needs setting explicitly for standalone use (calling `evaluate` without an agent) or
     to classify against a different model than the run answers with."""
 
-    invalid_question_response: str = DEFAULT_INVALID_QUESTION_RESPONSE
-    """Message returned to the caller in place of a rejected prompt."""
+    invalid_question_response: Optional[str] = None
+    """Message returned to the caller in place of a rejected prompt. `None` (the default)
+    falls back to :data:`DEFAULT_INVALID_QUESTION_RESPONSE` in `__post_init__`."""
 
-    classifier_instructions: str = DEFAULT_CLASSIFIER_INSTRUCTIONS
-    """System prompt sent with the classification request `evaluate` makes."""
+    classifier_instructions: Optional[str] = None
+    """System prompt sent with the classification request `evaluate` makes. `None` (the
+    default) falls back to :data:`DEFAULT_CLASSIFIER_INSTRUCTIONS` in `__post_init__`."""
+
+    def __post_init__(self) -> None:
+        """Fill unset fields from their module-level defaults.
+
+        Done here rather than as plain dataclass field defaults so callers -- e.g.
+        `SafetyCapabilityFactory`, forwarding a config field that's `None` when unset -- can
+        pass `None` through and still get the default, instead of having to omit the keyword
+        argument entirely to avoid overriding it.
+        """
+        if self.invalid_question_response is None:
+            self.invalid_question_response = DEFAULT_INVALID_QUESTION_RESPONSE
+        if self.classifier_instructions is None:
+            self.classifier_instructions = DEFAULT_CLASSIFIER_INSTRUCTIONS
 
     async def for_run(self, ctx: RunContext[AgentDepsT]) -> QuestionValidityCapability[AgentDepsT]:
         """Bind `model` to the run's own model when none was configured explicitly.

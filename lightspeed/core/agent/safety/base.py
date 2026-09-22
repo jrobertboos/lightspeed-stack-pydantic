@@ -11,6 +11,7 @@ from typing import Any, Iterable, Literal, Optional
 from pydantic_ai.capabilities import (
     AbstractCapability,
     WrapModelRequestHandler,
+    WrapRunHandler,
 )
 from pydantic_ai.exceptions import SkipModelRequest, UserError
 from pydantic_ai.messages import (
@@ -144,6 +145,48 @@ class AbstractSafetyCapability(AbstractCapability[AgentDepsT]):
                 ),
             )
         raise error
+
+    async def wrap_run(
+        self,
+        ctx: RunContext[AgentDepsT],
+        *,
+        handler: WrapRunHandler,
+    ) -> AgentRunResult[Any]:
+        """Re-apply the output verdict to the run's final result, not just the stream.
+
+        `wrap_run_event_stream` only rewrites the `AgentStreamEvent`s a *streaming* caller
+        observes -- `AgentRunResult.output` is built by the graph directly from the model's own
+        response parts, which never pass through that wrapper. Without this, a `'replace'`
+        verdict (e.g. `RedactionCapability`) would still leak the original text through
+        `result.output`: the non-streaming `/query` endpoint reads only `result.output` and never
+        sees the stream at all, and even a streaming caller's final `end`/`AgentRunResultEvent`
+        payload would disagree with the (correctly redacted) `text` events it just received.
+
+        Runs after `handler()` returns normally, so a run that errored and was recovered by
+        `on_run_error` (e.g. a mid-stream `'block'` verdict) is unaffected -- `on_run_error` only
+        gets a turn when the error propagates out of this method, which it does here since this
+        method never catches it. Re-evaluating over the *complete* output text (rather than
+        reusing whatever chunks `wrap_run_event_stream` already buffered) also avoids that
+        wrapper's chunk-boundary blind spot, where a pattern split across two buffered chunks
+        could otherwise slip through.
+        """
+        result = await handler()
+        if "output" in self.type:
+            verdict = await self.evaluate(result.output)
+            match verdict.action:
+                case "allow":
+                    return result
+                case "block":
+                    return dataclasses.replace(
+                        result, output=verdict.message or "Response blocked by a safety guard."
+                    )
+                case "replace":
+                    return dataclasses.replace(result, output=str(verdict.replacement))
+                case _:
+                    raise UserError(
+                        f"A Safety guard cannot return {verdict.action} on output; use allow, block, or replace."
+                    )
+        return result
 
     async def wrap_run_event_stream(
         self,
