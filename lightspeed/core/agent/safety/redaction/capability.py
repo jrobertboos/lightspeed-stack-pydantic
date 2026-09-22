@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Literal, Mapping
+from typing import Literal, Mapping, Sequence
 
 from pydantic_ai.tools import AgentDepsT
 
@@ -42,7 +42,7 @@ class RedactionCapability(AbstractSafetyCapability[AgentDepsT]):
     by default, so PII typed by the user and PII a model happens to generate are both caught.
     """
 
-    type: tuple[Literal["input", "output"], ...] = ("input", "output")
+    type: Sequence[Literal["input", "output"]] = field(default_factory=list)
     """Defaults to guarding both the user's prompt and the model's streamed output."""
 
     patterns: Mapping[str, str] = field(default_factory=lambda: dict(DEFAULT_PATTERNS))

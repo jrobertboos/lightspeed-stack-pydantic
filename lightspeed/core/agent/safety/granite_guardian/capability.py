@@ -18,9 +18,8 @@ dependency runs the other way -- config on capability, not capability on config)
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import Literal, Optional, Sequence
 
 from pydantic_ai import RunContext
 from pydantic_ai.capabilities import AbstractCapability, CombinedCapability
@@ -72,7 +71,7 @@ class Risk:
     """Whether to prompt Granite Guardian to reason before scoring (`<think>` block) rather
     than score immediately. Slower but can improve accuracy on subtler risks."""
 
-    type: tuple[Literal['input', 'output', 'tool'], ...] = ('input', 'output')
+    type: Sequence[Literal['input', 'output', 'tool']] = field(default_factory=list)
     """Which guardrail points this risk applies to. See
     `AbstractSafetyCapability.type`."""
 

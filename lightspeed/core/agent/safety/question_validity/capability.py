@@ -9,8 +9,8 @@ classification logic into `evaluate` callers.
 from __future__ import annotations
 
 import dataclasses
-from dataclasses import dataclass
-from typing import Literal, Optional
+from dataclasses import dataclass, field
+from typing import Literal, Optional, Sequence
 
 from pydantic_ai import RunContext
 from pydantic_ai.exceptions import UserError
@@ -43,7 +43,7 @@ class QuestionValidityCapability(AbstractSafetyCapability[AgentDepsT]):
     :meth:`evaluate` directly for a standalone check.
     """
 
-    type: tuple[Literal['input'], ...] = ('input',)
+    type: Sequence[Literal['input']] = field(default_factory=list)
     """Fixed to `'input'`: this capability only ever classifies the user's prompt, never
     streamed model output."""
 
