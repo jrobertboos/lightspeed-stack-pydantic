@@ -331,7 +331,7 @@ class TestWrapRunEventStream:
         capability = FixedVerdictCapability(
             type=["output"], verdict=GuardrailResult.block("should not fire")
         )
-        capability.output_check_interval_tokens = 50
+        capability.check_tokens = 50
         event = PartDeltaEvent(index=0, delta=TextPartDelta(content_delta="x"))
         collected = run(self._collect(capability, [event]))
         assert collected == []

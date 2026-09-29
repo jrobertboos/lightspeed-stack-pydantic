@@ -254,12 +254,12 @@ class GraniteGuardianConfig(ConfigurationBase):
             raise ValueError(f"model must be `<provider>:<model>`, got {value!r}")
         return value
 
-    output_check_interval_tokens: int = Field(
+    check_tokens: int = Field(
         50,
         title="Output check interval",
         description=(
             "How often (in approximate output events) to re-run each risk's check on "
-            "streamed output. See `AbstractSafetyCapability.output_check_interval_tokens`."
+            "streamed output. See `AbstractSafetyCapability.check_tokens`."
         ),
         gt=0,
     )

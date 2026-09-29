@@ -149,8 +149,8 @@ class GraniteGuardian(CombinedCapability[AgentDepsT]):
     """The Granite Guardian model shared by every risk in `capabilities`. Required; passed
     through unchanged to each risk's `GraniteGuardianRisk.model`."""
 
-    output_check_interval_tokens: int = field(kw_only=True, default=50)
-    """Passed through to each risk's `GraniteGuardianRisk.output_check_interval_tokens`."""
+    check_tokens: int = field(kw_only=True, default=50)
+    """Passed through to each risk's `GraniteGuardianRisk.check_tokens`."""
 
     capabilities: Sequence[AbstractCapability[AgentDepsT]] = field(default_factory=list, init=False)
     """Populated in `__post_init__` from `risks`; not meant to be passed directly."""
@@ -164,7 +164,7 @@ class GraniteGuardian(CombinedCapability[AgentDepsT]):
                 id=f'{prefix}{risk.name}',
                 risk=risk,
                 model=self.model,
-                output_check_interval_tokens=self.output_check_interval_tokens,
+                check_tokens=self.check_tokens,
             )
             for risk in self.risks
         ]

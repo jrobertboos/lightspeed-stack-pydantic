@@ -231,7 +231,7 @@ sharing one model.
 | Field | Required | Description |
 | --- | --- | --- |
 | `model` | no | `<provider>:<model>` -- provider registry name and model id, resolved at build time. Omit to screen against the run's own model |
-| `output_check_interval_tokens` | no | How often (in approximate output events) to re-run each risk's check on streamed output. Defaults to `50` |
+| `check_tokens` | no | How often (in approximate output events) to re-run each risk's check on streamed output. Defaults to `50` |
 | `risks` | yes | List of risks to screen for (at least one) |
 
 Each entry in `risks` is a

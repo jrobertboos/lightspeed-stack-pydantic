@@ -80,7 +80,7 @@ def _build_capability(config: SafetyCapabilityConfiguration) -> AgentCapability[
             id=config.name,
             model=model,
             risks=config.config.risks,
-            output_check_interval_tokens=config.config.output_check_interval_tokens,
+            check_tokens=config.config.check_tokens,
         )
 
     if isinstance(config, QuestionValiditySafetyConfiguration):

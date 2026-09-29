@@ -108,7 +108,7 @@ class AbstractSafetyCapability(AbstractCapability[AgentDepsT]):
 
     type: Iterable[Literal['input', 'output', 'tool']]
 
-    output_check_interval_tokens: int = 50
+    check_tokens: int = 50
     """How often (in approximate output tokens) to re-run `evaluate` on streamed output.
 
     Only used when `'output'` is in `type`. Text generated since the last check is buffered and
@@ -222,7 +222,7 @@ class AbstractSafetyCapability(AbstractCapability[AgentDepsT]):
             try:
                 async for event in stream:
                     state.append(event)
-                    if state.ready(self.output_check_interval_tokens):
+                    if state.ready(self.check_tokens):
                         for released in await release(state):
                             yield released
             except OutputBlocked:

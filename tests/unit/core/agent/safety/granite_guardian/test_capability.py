@@ -143,9 +143,9 @@ class TestGraniteGuardian:
             id="my_shield",
             risks=[Risk(name="harm", criteria="flags harm")],
             model=TestModel(),
-            output_check_interval_tokens=10,
+            check_tokens=10,
         )
-        assert guardian.capabilities[0].output_check_interval_tokens == 10
+        assert guardian.capabilities[0].check_tokens == 10
 
     def test_no_id_produces_unprefixed_sub_ids(self) -> None:
         guardian = GraniteGuardian(risks=[Risk(name="harm", criteria="flags harm")], model=TestModel())
