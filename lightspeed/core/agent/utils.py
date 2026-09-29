@@ -56,7 +56,7 @@ def extract_latest_message_text(messages: Sequence[ModelMessage]) -> str | None:
     return part.content if isinstance(part.content, str) else str(part.content)
 
 
-def append_latest_message(messages: Sequence[ModelMessage], content: str | Sequence[UserContent]) -> None:
+def append_latest_message(messages: Sequence[ModelMessage], content: UserContent | Sequence[UserContent]) -> None:
     """Append a new user prompt with `content` to the latest message, mutating it in place.
 
     Takes the same `content` type as `replace_latest_message` -- the two

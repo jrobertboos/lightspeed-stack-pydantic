@@ -11,20 +11,31 @@ or construct this directly for programmatic use, the same way
 
 from __future__ import annotations
 
+import uuid
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Literal, Mapping, Optional, Set
-import uuid
 
 from pydantic_ai.capabilities import AbstractCapability
-from pydantic_ai.embeddings import Embedder
 from pydantic_ai.messages import TextContent, UserContent
 from pydantic_ai.models import ModelRequestContext
 from pydantic_ai.tools import AgentDepsT, RunContext
 from pydantic_ai.toolsets import AgentToolset
 
-from lightspeed.core.agent.knowledge.store import KnowledgeMatch, VectorStore
 from lightspeed.core.agent.knowledge.toolset import KnowledgeToolset
 from lightspeed.core.agent.utils import append_latest_message, extract_latest_message_text
+
+
+
+class KnowledgeSource(ABC):
+    """Knowledge source to search."""
+
+    name: str
+    """Name of the knowledge source."""
+
+    @abstractmethod
+    async def search(self, prompt: str) -> list[KnowledgeMatch]:
+        """Search the knowledge source for matches."""
 
 
 @dataclass(frozen=True)
@@ -49,17 +60,10 @@ class KnowledgeMatch:
 
 @dataclass
 class Knowledge(AbstractCapability[AgentDepsT]):
-    """Vector-similarity search ("RAG") over one named knowledge source."""
+    """Vector-similarity search ("RAG") over one named :class:`KnowledgeSource`."""
 
-    source: VectorStore
-    """Backing vector store. No built-in backend exists yet -- see
-    :class:`~lightspeed.core.agent.knowledge.registry.KnowledgeStoreRegistry`."""
-
-    embedder: Embedder
-    """Generates the query embedding passed to `store.search`."""
-
-    top_k: int = 5
-    """Number of matches requested per search."""
+    source: KnowledgeSource
+    """Knowledge source to search."""
 
     mode: Set[Literal["tool", "auto"]] = {"tool"}
     """
@@ -78,10 +82,6 @@ class Knowledge(AbstractCapability[AgentDepsT]):
         request_context: ModelRequestContext,
     ) -> ModelRequestContext:
         """In `'auto'` mode, search the latest user prompt and inject matches as context."""
-
-        async def search(prompt: str) -> list[KnowledgeMatch]:
-            embedding_result = await self.embedder.embed_query(prompt)
-            return await self.store.search(embedding_result.embeddings[0], limit=self.top_k)
 
         def to_message(matches: list[KnowledgeMatch], source: str) -> Optional[UserContent]:
             if not matches:
@@ -112,7 +112,7 @@ class Knowledge(AbstractCapability[AgentDepsT]):
             if not prompt:
                 return request_context
 
-            matches = await search(prompt)
+            matches = await self.source.search(prompt)
 
             if message := to_message(matches, source=self.name):
                 append_latest_message(request_context.messages, message)

@@ -17,50 +17,50 @@ from __future__ import annotations
 
 from typing import Iterator, Mapping
 
-from lightspeed.core.agent.knowledge.store import VectorStore
+from lightspeed.core.agent.knowledge.capability import KnowledgeSource
 from lightspeed.core.types import Singleton
 
 
-class KnowledgeStoreRegistry(metaclass=Singleton):
-    """Process-wide singleton holding hand-registered knowledge :class:`VectorStore` instances."""
+class KnowledgeSourceRegistry(metaclass=Singleton):
+    """Process-wide singleton holding hand-registered knowledge :class:`KnowledgeSource` instances."""
 
     def __init__(self) -> None:
-        self._stores: dict[str, VectorStore] = {}
+        self._sources: dict[str, KnowledgeSource] = {}
 
-    def register(self, name: str, store: VectorStore) -> None:
-        """Register `store` under `name`, replacing any store already registered for it."""
-        self._stores[name] = store
+    def register(self, name: str, source: KnowledgeSource) -> None:
+        """Register `source` under `name`, replacing any source already registered for it."""
+        self._sources[name] = source
 
     def unregister(self, name: str) -> None:
-        """Remove the store registered under `name`, if any. No-op if absent."""
-        self._stores.pop(name, None)
+        """Remove the source registered under `name`, if any. No-op if absent."""
+        self._sources.pop(name, None)
 
-    def get(self, name: str) -> VectorStore:
-        """Return the store registered under `name`.
+    def get(self, name: str) -> KnowledgeSource:
+        """Return the source registered under `name`.
 
         Raises:
-            KeyError: If no store is registered for `name`.
+            KeyError: If no source is registered for `name`.
         """
         try:
-            return self._stores[name]
+            return self._sources[name]
         except KeyError as exc:
             raise KeyError(
-                f"No VectorStore registered for knowledge source {name!r}. There is no built-in "
+                f"No KnowledgeSource registered for knowledge source {name!r}. There is no built-in "
                 "backend yet for any KnowledgeSourceType -- call "
-                f"KnowledgeStoreRegistry().register({name!r}, store) with a VectorStore instance "
+                f"KnowledgeSourceRegistry().register({name!r}, source) with a KnowledgeSource instance "
                 "before building agents."
             ) from exc
 
     def __contains__(self, name: object) -> bool:
-        return isinstance(name, str) and name in self._stores
+        return isinstance(name, str) and name in self._sources
 
     def __len__(self) -> int:
-        return len(self._stores)
+        return len(self._sources)
 
     def __iter__(self) -> Iterator[str]:
-        return iter(self._stores)
+        return iter(self._sources)
 
     @property
-    def stores(self) -> Mapping[str, VectorStore]:
-        """Read-only view of registered stores, keyed by source name."""
-        return dict(self._stores)
+    def sources(self) -> Mapping[str, KnowledgeSource]:
+        """Read-only view of registered sources, keyed by source name."""
+        return dict(self._sources)
