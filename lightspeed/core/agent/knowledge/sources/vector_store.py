@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Optional, Sequence
 
 from pydantic_ai.embeddings import Embedder, EmbeddingSettings
 
-from lightspeed.core.agent.knowledge.capability import KnowledgeMatch, KnowledgeSource
+from lightspeed.core.agent.knowledge.sources.base import KnowledgeMatch, KnowledgeSource
 
 
 class VectorStore(ABC):
@@ -23,6 +24,7 @@ class VectorStore(ABC):
         ...
 
 
+@dataclass
 class VectorStoreKnowledgeSource(KnowledgeSource):
     """Knowledge source that embeds queries and searches a :class:`VectorStore`."""
 

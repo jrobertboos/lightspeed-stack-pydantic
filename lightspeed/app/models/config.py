@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Set
 
 from pydantic import (
     AnyHttpUrl,
@@ -162,17 +162,22 @@ class SkillsConfiguration(ConfigurationBase):
 class KnowledgeSourceConfiguration(ConfigurationBase):
     """One knowledge (RAG) source entry.
 
-    Each entry becomes one or two :class:`~lightspeed.core.agent.knowledge.capability.Knowledge`
-    capabilities (see
-    :class:`~lightspeed.core.agent.knowledge.factory.KnowledgeCapabilityFactory`),
-    depending on whether ``name`` is listed under
-    :attr:`KnowledgeConfiguration.strategy`'s ``inline`` and/or ``tool`` lists.
+    Each entry becomes one source on the single
+    :class:`~lightspeed.core.agent.knowledge.capability.Knowledge` capability
+    (see
+    :class:`~lightspeed.core.agent.knowledge.factory.KnowledgeCapabilityFactory`).
+    ``mode`` documents how that source is meant to be exposed -- as a
+    model-callable tool, automatic inline context injection, or both -- for
+    whoever constructs and registers the matching
+    :class:`~lightspeed.core.agent.knowledge.sources.base.KnowledgeSource`
+    instance to honor.
 
-    ``type`` and ``config`` describe the backend a future
-    :class:`~lightspeed.core.agent.knowledge.store.VectorStore` builder would
-    connect to; there is no such builder yet, so a source is only usable once
-    something calls
-    :meth:`~lightspeed.core.agent.knowledge.registry.KnowledgeStoreRegistry.register`
+    ``type``, ``config``, ``embedding_model``, and ``top_k`` describe the
+    backend a future
+    :class:`~lightspeed.core.agent.knowledge.sources.vector_store.VectorStore`
+    builder would connect to; there is no such builder yet, so a source is
+    only usable once something calls
+    :meth:`~lightspeed.core.agent.knowledge.registry.KnowledgeSourceRegistry.register`
     for its ``name``.
 
     YAML shape::
@@ -181,6 +186,7 @@ class KnowledgeSourceConfiguration(ConfigurationBase):
           sources:
             - name: product-docs
               type: pgvector
+              mode: [tool]
               config:
                 dsn: postgresql://...
               embedding_model: openai:text-embedding-3-small
@@ -200,6 +206,19 @@ class KnowledgeSourceConfiguration(ConfigurationBase):
         description=(
             "Backend type: faiss, pgvector, or okp. None has a built-in "
             "VectorStore builder yet -- see KnowledgeSourceConfiguration."
+        ),
+    )
+
+    mode: Set[Literal["tool", "auto"]] = Field(
+        default_factory=lambda: {"tool"},
+        title="Exposure mode",
+        description=(
+            "'tool': exposes a model-callable search_<name> tool for this source. "
+            "'auto': searches the latest user prompt automatically and injects "
+            "matches as context on every model request. A source can use both. "
+            "Not yet consumed by the factory -- see KnowledgeSourceConfiguration; "
+            "set this on the registered KnowledgeSource instance directly until a "
+            "backend builder exists."
         ),
     )
 
@@ -231,30 +250,6 @@ class KnowledgeSourceConfiguration(ConfigurationBase):
     )
 
 
-class KnowledgeStrategyConfiguration(ConfigurationBase):
-    """Assigns each knowledge source to one or both exposure modes.
-
-    A source named in neither list still defaults to ``'tool'`` mode (see
-    :class:`~lightspeed.core.agent.knowledge.factory.KnowledgeCapabilityFactory`);
-    listing it under both makes it available both ways at once.
-    """
-
-    inline: list[str] = Field(
-        default_factory=list,
-        title="Inline sources",
-        description=(
-            "Source names automatically searched and injected into context "
-            "on every model request."
-        ),
-    )
-
-    tool: list[str] = Field(
-        default_factory=list,
-        title="Tool sources",
-        description="Source names exposed as a model-callable search tool.",
-    )
-
-
 class RerankerConfiguration(ConfigurationBase):
     """Reranker configuration. Not yet implemented.
 
@@ -279,23 +274,15 @@ class KnowledgeConfiguration(ConfigurationBase):
           sources:
             - name: product-docs
               type: pgvector
+              mode: [tool]
               config: {}
               embedding_model: openai:text-embedding-3-small
-          strategy:
-            tool:
-              - product-docs
     """
 
     sources: list[KnowledgeSourceConfiguration] = Field(
         default_factory=list,
         title="Knowledge sources",
         description="Configured knowledge sources available to agents.",
-    )
-
-    strategy: Optional[KnowledgeStrategyConfiguration] = Field(
-        None,
-        title="Strategy",
-        description="Assigns sources to inline and/or tool exposure modes.",
     )
 
     reranker: Optional[RerankerConfiguration] = Field(

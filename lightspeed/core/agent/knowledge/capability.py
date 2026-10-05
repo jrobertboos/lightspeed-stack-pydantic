@@ -1,8 +1,11 @@
-"""``Knowledge`` capability: vector-similarity search ("RAG") over a pluggable ``VectorStore``.
+"""``Knowledge`` capability: vector-similarity search ("RAG") over one or more pluggable ``KnowledgeSource``s.
 
-Exposed to the agent as a model-callable tool (`mode='tool'`), as automatic
-inline context injection (`mode='inline'`), or both by attaching two
-instances -- configure sources under `knowledge.strategy.tool` / `.inline` in
+Each attached :class:`~lightspeed.core.agent.knowledge.sources.base.KnowledgeSource`
+declares its own `mode` -- exposed to the agent via a single model-callable
+`search_knowledge` tool spanning every tool-mode source (`'tool'`), as
+automatic inline context injection per source (`'auto'`), or both -- so a
+single `Knowledge` capability can combine several sources, each exposed
+however it needs to be. Configure sources under `knowledge.sources` in
 `lightspeed-stack.yaml` (see
 :class:`~lightspeed.core.agent.knowledge.factory.KnowledgeCapabilityFactory`),
 or construct this directly for programmatic use, the same way
@@ -11,8 +14,9 @@ or construct this directly for programmatic use, the same way
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal, Optional, Set
+from typing import Optional
 
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.messages import TextContent, UserContent
@@ -24,30 +28,25 @@ from lightspeed.core.agent.knowledge.sources.base import KnowledgeMatch, Knowled
 from lightspeed.core.agent.knowledge.toolset import KnowledgeToolset
 from lightspeed.core.agent.utils import append_latest_message, extract_latest_message_text
 
+
 @dataclass
 class Knowledge(AbstractCapability[AgentDepsT]):
-    """Vector-similarity search ("RAG") over one named :class:`KnowledgeSource`."""
+    """Vector-similarity search ("RAG") over one or more :class:`KnowledgeSource` instances."""
 
-    source: KnowledgeSource
-    """Knowledge source to search."""
-
-    mode: Set[Literal["tool", "auto"]] = {"tool"}
-    """
-    `'tool'`: exposes a model-callable `search_<name>` tool.
-    `'auto'`: searches the latest user prompt automatically and injects
-    matches as bounded, delimited context on every model request.
-    """
+    sources: Sequence[KnowledgeSource]
+    """Knowledge sources to search. Each source's own `mode` controls how it's exposed."""
 
     def get_toolset(self) -> AgentToolset[AgentDepsT] | None:
-        """Provide the `search_<name>` toolset, only in `'tool'` mode."""
-        return KnowledgeToolset(self) if self.mode == "tool" else None
+        """Provide a single `search_knowledge` tool spanning every source whose `mode` includes `'tool'`."""
+        tool_sources = [source for source in self.sources if "tool" in source.mode]
+        return KnowledgeToolset(tool_sources) if tool_sources else None
 
     async def before_model_request(
         self,
         ctx: RunContext[AgentDepsT],
         request_context: ModelRequestContext,
     ) -> ModelRequestContext:
-        """In `'auto'` mode, search the latest user prompt and inject matches as context."""
+        """For each source whose `mode` includes `'auto'`, search the latest prompt and inject matches."""
 
         def to_message(matches: list[KnowledgeMatch], source: str) -> Optional[UserContent]:
             if not matches:
@@ -59,7 +58,7 @@ class Knowledge(AbstractCapability[AgentDepsT]):
                 f"</match>"
                 for match in matches
             ]
-            
+
             body = "\n\n".join(match_blocks)
 
             return TextContent(
@@ -72,15 +71,17 @@ class Knowledge(AbstractCapability[AgentDepsT]):
                 },
             )
 
-        if "auto" in self.mode: 
+        auto_sources = [source for source in self.sources if "auto" in source.mode]
+        if not auto_sources:
+            return request_context
 
-            prompt = extract_latest_message_text(request_context.messages)
-            if not prompt:
-                return request_context
+        prompt = extract_latest_message_text(request_context.messages)
+        if not prompt:
+            return request_context
 
-            matches = await self.source.search(prompt)
-
-            if message := to_message(matches, source=self.name):
+        for source in auto_sources:
+            matches = await source.search(prompt)
+            if message := to_message(matches, source=source.name):
                 append_latest_message(request_context.messages, message)
 
         return request_context
