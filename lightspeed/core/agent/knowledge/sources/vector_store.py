@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Sequence
 
-from pydantic_ai.embeddings import Embedder, EmbeddingResult, EmbeddingSettings
+from pydantic_ai.embeddings import Embedder, EmbeddingSettings
 
 from lightspeed.core.agent.knowledge.capability import KnowledgeMatch, KnowledgeSource
 
@@ -12,7 +12,7 @@ class VectorStore(ABC):
     """Vector store to search by embedding vector."""
 
     @abstractmethod
-    async def search(self, embedding: EmbeddingResult, limit: int = 5) -> list[KnowledgeMatch]:
+    async def search(self, embeddings: Sequence[Sequence[float]], limit: int = 5) -> list[KnowledgeMatch]:
         """Search the vector store for matches.
 
         Args:
@@ -40,4 +40,4 @@ class VectorStoreKnowledgeSource(KnowledgeSource):
     async def search(self, query: str) -> list[KnowledgeMatch]:
         """Search the vector store for matches."""
         embedding_result = await self.embedder.embed_query(query, settings=self.embedding_settings)
-        return await self.store.search(embedding_result, limit=self.top_k)
+        return await self.store.search(embedding_result.embeddings, limit=self.top_k)
