@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Iterator, Mapping
 
-from lightspeed.core.agent.knowledge.capability import KnowledgeSource
+from lightspeed.core.agent.knowledge.sources.base import KnowledgeSource
 from lightspeed.core.types import Singleton
 
 

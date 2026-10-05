@@ -21,7 +21,7 @@ from pydantic_ai.providers import Provider, infer_provider
 from lightspeed.app.models.config import KnowledgeConfiguration, KnowledgeSourceConfiguration
 from lightspeed.core.agent.capability_factory import CapabilityFactory
 from lightspeed.core.agent.knowledge.capability import Knowledge
-from lightspeed.core.agent.knowledge.registry import KnowledgeStoreRegistry
+from lightspeed.core.agent.knowledge.registry import KnowledgeSourceRegistry
 from lightspeed.core.providers.registry import ProviderRegistry
 
 
@@ -83,7 +83,7 @@ class KnowledgeCapabilityFactory(CapabilityFactory[Optional[KnowledgeConfigurati
 
 def _build_capability(source: KnowledgeSourceConfiguration, mode: str) -> Knowledge[Any]:
     """Build a single ``Knowledge`` capability for `source` in `mode`."""
-    store = KnowledgeStoreRegistry().get(source.name)
+    store = KnowledgeSourceRegistry().get(source.name)
     # `Embedder` itself has no `provider_factory` hook, unlike `infer_embedding_model` --
     # resolve the model with it first, then wrap the resolved model.
     embedding_model = infer_embedding_model(source.embedding_model, provider_factory=_provider_factory)

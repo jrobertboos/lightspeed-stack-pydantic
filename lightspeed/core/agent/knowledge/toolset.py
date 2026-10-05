@@ -6,9 +6,9 @@ import re
 
 from pydantic_ai.tools import AgentDepsT, RunContext
 from pydantic_ai.toolsets import FunctionToolset
-from typing_extensions import TypedDict
 
-from lightspeed.core.agent.knowledge.capability import Knowledge, KnowledgeMatch
+from lightspeed.core.agent.knowledge.capability import Knowledge
+from lightspeed.core.agent.knowledge.sources.base import KnowledgeMatch
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 

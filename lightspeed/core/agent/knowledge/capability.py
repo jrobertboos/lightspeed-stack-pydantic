@@ -11,10 +11,8 @@ or construct this directly for programmatic use, the same way
 
 from __future__ import annotations
 
-import uuid
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Any, Literal, Mapping, Optional, Set
+from dataclasses import dataclass
+from typing import Literal, Optional, Set
 
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.messages import TextContent, UserContent
@@ -22,41 +20,9 @@ from pydantic_ai.models import ModelRequestContext
 from pydantic_ai.tools import AgentDepsT, RunContext
 from pydantic_ai.toolsets import AgentToolset
 
+from lightspeed.core.agent.knowledge.sources.base import KnowledgeMatch, KnowledgeSource
 from lightspeed.core.agent.knowledge.toolset import KnowledgeToolset
 from lightspeed.core.agent.utils import append_latest_message, extract_latest_message_text
-
-
-
-class KnowledgeSource(ABC):
-    """Knowledge source to search."""
-
-    name: str
-    """Name of the knowledge source."""
-
-    @abstractmethod
-    async def search(self, prompt: str) -> list[KnowledgeMatch]:
-        """Search the knowledge source for matches."""
-
-
-@dataclass(frozen=True)
-class KnowledgeMatch:
-    """One scored knowledge-search result."""
-
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    """Unique identifier for this match."""
-
-    content: str
-    """The matched chunk's text."""
-
-    score: float
-    """Similarity score for this match; higher is more relevant."""
-
-    source: str | None = None
-    """Optional citation identifier (e.g. a document URI), for grounding."""
-
-    metadata: Mapping[str, Any] = field(default_factory=dict)
-    """Optional backend-specific metadata carried alongside the match."""
-
 
 @dataclass
 class Knowledge(AbstractCapability[AgentDepsT]):
