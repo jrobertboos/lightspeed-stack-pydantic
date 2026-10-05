@@ -12,12 +12,13 @@ class VectorStore(ABC):
     """Vector store to search by embedding vector."""
 
     @abstractmethod
-    async def search(self, embeddings: Sequence[Sequence[float]], limit: int = 5) -> list[KnowledgeMatch]:
+    async def search(self, embeddings: Sequence[Sequence[float]], limit: int = 5, threshold: float = 0.0) -> list[KnowledgeMatch]:
         """Search the vector store for matches.
 
         Args:
-            embedding: Query embedding vector.
+            embeddings: Query embedding vectors.
             limit: The maximum number of matches to return.
+            threshold: The minimum similarity score to return.
         """
         ...
 
@@ -37,7 +38,10 @@ class VectorStoreKnowledgeSource(KnowledgeSource):
     top_k: int = 5
     """Maximum number of matches to return."""
 
+    score_threshold: float = 0.0
+    """Minimum similarity score to return."""
+
     async def search(self, query: str) -> list[KnowledgeMatch]:
         """Search the vector store for matches."""
         embedding_result = await self.embedder.embed_query(query, settings=self.embedding_settings)
-        return await self.store.search(embedding_result.embeddings, limit=self.top_k)
+        return await self.store.search(embedding_result.embeddings, limit=self.top_k, threshold=self.score_threshold)
