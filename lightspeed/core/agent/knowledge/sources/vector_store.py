@@ -6,7 +6,8 @@ from typing import Optional, Sequence
 
 from pydantic_ai.embeddings import Embedder, EmbeddingSettings
 
-from lightspeed.core.agent.knowledge.sources.base import KnowledgeMatch, KnowledgeSource
+from lightspeed.core.agent.knowledge.sources.base import KnowledgeSource
+from lightspeed.core.agent.knowledge.types import KnowledgeMatch
 
 
 class VectorStore(ABC):

@@ -15,7 +15,7 @@ import logging
 from dataclasses import replace
 
 from sentence_transformers import CrossEncoder
-from lightspeed.core.agent.knowledge.sources.base import KnowledgeMatch
+from lightspeed.core.agent.knowledge.types import KnowledgeMatch
 
 logger = logging.getLogger(__name__)
 

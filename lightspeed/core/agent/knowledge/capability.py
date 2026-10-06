@@ -25,7 +25,8 @@ from pydantic_ai.tools import AgentDepsT, RunContext
 from pydantic_ai.toolsets import AgentToolset
 
 from lightspeed.core.agent.knowledge.reranker import rerank
-from lightspeed.core.agent.knowledge.sources.base import KnowledgeMatch, KnowledgeSource
+from lightspeed.core.agent.knowledge.sources.base import KnowledgeSource
+from lightspeed.core.agent.knowledge.types import KnowledgeMatch
 from lightspeed.core.agent.knowledge.toolset import KnowledgeToolset
 from lightspeed.core.agent.utils import append_latest_message, extract_latest_message_text
 

@@ -12,7 +12,8 @@ from pydantic_ai.toolsets import FunctionToolset
 from sentence_transformers import CrossEncoder
 
 from lightspeed.core.agent.knowledge.reranker import rerank
-from lightspeed.core.agent.knowledge.sources.base import KnowledgeMatch, KnowledgeSource
+from lightspeed.core.agent.knowledge.sources.base import KnowledgeSource
+from lightspeed.core.agent.knowledge.types import KnowledgeMatch
 
 
 class KnowledgeToolset(FunctionToolset[AgentDepsT]):
