@@ -11,8 +11,8 @@ import faiss
 import numpy as np
 from pydantic_ai.embeddings import Embedder, EmbeddingSettings
 
+from lightspeed.core.agent.knowledge.sources.base import VectorStore, VectorStoreKnowledgeSource
 from lightspeed.core.agent.knowledge.types import KnowledgeMatch
-from lightspeed.core.agent.knowledge.sources.vector_store import VectorStore, VectorStoreKnowledgeSource
 
 _KV_NAMESPACE: Final[str] = "vector_io::faiss"
 _KV_VERSION: Final[str] = "v3"
