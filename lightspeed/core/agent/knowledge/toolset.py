@@ -9,6 +9,7 @@ from typing import Optional
 
 from pydantic_ai.tools import AgentDepsT, RunContext
 from pydantic_ai.toolsets import FunctionToolset
+from sentence_transformers import CrossEncoder
 
 from lightspeed.core.agent.knowledge.reranker import rerank
 from lightspeed.core.agent.knowledge.sources.base import KnowledgeMatch, KnowledgeSource
@@ -24,7 +25,7 @@ class KnowledgeToolset(FunctionToolset[AgentDepsT]):
     `reranker` is set, otherwise by each source's own similarity score.
     """
 
-    def __init__(self, sources: Sequence[KnowledgeSource], reranker: Optional[str] = None) -> None:
+    def __init__(self, sources: Sequence[KnowledgeSource], reranker: Optional[CrossEncoder] = None) -> None:
         super().__init__(id=f"knowledge:{'+'.join(source.name for source in sources)}")
         self._sources = list(sources)
         self._reranker = reranker

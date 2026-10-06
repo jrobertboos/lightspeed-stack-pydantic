@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from pydantic_ai.capabilities import AgentCapability
+from sentence_transformers import CrossEncoder
 
 from lightspeed.app.models.config import KnowledgeConfiguration
 from lightspeed.core.agent.capability_factory import CapabilityFactory
@@ -59,5 +60,5 @@ class KnowledgeCapabilityFactory(CapabilityFactory[Optional[KnowledgeConfigurati
 
         registry = KnowledgeSourceRegistry()
         sources = [registry.get(source.name) for source in config.sources]
-        reranker = config.reranker.model if config.reranker else None
+        reranker = CrossEncoder(config.reranker) if config.reranker else None
         return [Knowledge(sources=sources, reranker=reranker, id="knowledge")]

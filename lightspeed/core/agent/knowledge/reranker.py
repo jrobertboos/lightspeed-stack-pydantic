@@ -11,24 +11,23 @@ the matches are returned unranked.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import replace
 
-from lightspeed.core.agent.knowledge.registry import CrossEncoderRegistry
+from sentence_transformers import CrossEncoder
 from lightspeed.core.agent.knowledge.sources.base import KnowledgeMatch
 
 logger = logging.getLogger(__name__)
 
 
-async def rerank(query: str, matches: list[KnowledgeMatch], model_name: str) -> list[KnowledgeMatch]:
-    """Rerank `matches` against `query` with the named cross-encoder, highest score first.
+async def rerank(query: str, matches: list[KnowledgeMatch], model: CrossEncoder) -> list[KnowledgeMatch]:
+    """Rerank `matches` against `query` with the cross-encoder, highest score first.
 
     Args:
         query: The search query the matches should be scored against.
         matches: Matches to rerank; each match's `score` is replaced with
             its cross-encoder score.
-        model_name: A `sentence-transformers` cross-encoder model id, e.g.
+        model: A `sentence-transformers` cross-encoder model.
             `'cross-encoder/ms-marco-MiniLM-L-6-v2'`.
 
     Returns:
@@ -39,10 +38,9 @@ async def rerank(query: str, matches: list[KnowledgeMatch], model_name: str) -> 
         return matches
 
     try:
-        model = await CrossEncoderRegistry().get(model_name)
-        scores = await asyncio.to_thread(model.predict, [(query, match.content) for match in matches])
+        scores = model.predict([(query, match.content) for match in matches])
     except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
-        logger.warning("Cross-encoder reranking with %r failed; returning unranked matches.", model_name, exc_info=True)
+        logger.warning("Cross-encoder reranking failed; returning unranked matches.", exc_info=True)
         return matches
 
     # Normalize cross-encoder scores to [0,1] range using min-max normalization

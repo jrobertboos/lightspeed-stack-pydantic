@@ -13,20 +13,14 @@ pydantic-ai ``Provider`` from a ``ProviderConfiguration``. Registering a store
 here by name -- e.g. at application startup, alongside
 ``ProviderRegistry().load(...)`` -- is how a configured source becomes
 usable until a concrete backend builder exists.
-
-:class:`CrossEncoderRegistry` caches lazily-loaded `sentence-transformers`
-`CrossEncoder` models by name, for use by
-:mod:`~lightspeed.core.agent.knowledge.reranker`.
 """
 
 from __future__ import annotations
 
-import asyncio
-from typing import Any, Iterator, Mapping
+from typing import Iterator, Mapping
 
 from lightspeed.core.agent.knowledge.sources.base import KnowledgeSource
 from lightspeed.core.types import Singleton
-from sentence_transformers import CrossEncoder
 
 class KnowledgeSourceRegistry(metaclass=Singleton):
     """Process-wide singleton holding hand-registered knowledge :class:`KnowledgeSource` instances."""
@@ -71,23 +65,3 @@ class KnowledgeSourceRegistry(metaclass=Singleton):
     def sources(self) -> Mapping[str, KnowledgeSource]:
         """Read-only view of registered sources, keyed by source name."""
         return dict(self._sources)
-
-
-class CrossEncoderRegistry(metaclass=Singleton):
-    """Process-wide singleton caching lazily-loaded `sentence-transformers` `CrossEncoder` models by name.
-
-    Used by :mod:`~lightspeed.core.agent.knowledge.reranker` so a reranker
-    model is loaded (an expensive, blocking operation) at most once per
-    process, however many times it's referenced by name.
-    """
-
-    def __init__(self) -> None:
-        self._models: dict[str, Any] = {}
-        self._lock = asyncio.Lock()
-
-    async def get(self, model_name: str) -> Any:
-        """Return the `CrossEncoder` for `model_name`, loading and caching it on first use."""
-        if model_name not in self._models:
-            async with self._lock:
-                    self._models[model_name] = await asyncio.to_thread(CrossEncoder, model_name)
-        return self._models[model_name]
