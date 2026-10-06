@@ -43,8 +43,6 @@ class KnowledgeCapabilityFactory(CapabilityFactory[Optional[KnowledgeConfigurati
 
         Raises:
             ValueError: If two sources share a name.
-            NotImplementedError: If ``knowledge.reranker`` is set (not yet
-                implemented).
             KeyError: If a configured source has no
                 :class:`~lightspeed.core.agent.knowledge.sources.base.KnowledgeSource`
                 registered for it in
@@ -52,12 +50,6 @@ class KnowledgeCapabilityFactory(CapabilityFactory[Optional[KnowledgeConfigurati
         """
         if config is None or not config.sources:
             return []
-
-        if config.reranker is not None:
-            raise NotImplementedError(
-                "knowledge.reranker is set, but reranking isn't implemented yet. Remove it from "
-                "the configuration."
-            )
 
         seen: set[str] = set()
         for source in config.sources:
@@ -67,4 +59,5 @@ class KnowledgeCapabilityFactory(CapabilityFactory[Optional[KnowledgeConfigurati
 
         registry = KnowledgeSourceRegistry()
         sources = [registry.get(source.name) for source in config.sources]
-        return [Knowledge(sources=sources, id="knowledge")]
+        reranker = config.reranker.model if config.reranker else None
+        return [Knowledge(sources=sources, reranker=reranker, id="knowledge")]

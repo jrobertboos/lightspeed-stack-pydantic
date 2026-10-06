@@ -251,17 +251,23 @@ class KnowledgeSourceConfiguration(ConfigurationBase):
 
 
 class RerankerConfiguration(ConfigurationBase):
-    """Reranker configuration. Not yet implemented.
+    """Reranker configuration.
 
-    Declared so a configuration file that sets it loads and validates, but
+    Converted by
     :class:`~lightspeed.core.agent.knowledge.factory.KnowledgeCapabilityFactory`
-    raises ``NotImplementedError`` if this is set.
+    into the ``reranker`` passed to
+    :class:`~lightspeed.core.agent.knowledge.capability.Knowledge`, which
+    uses it to rerank matches with a lazily-loaded
+    `sentence-transformers` ``CrossEncoder``.
     """
 
     model: str = Field(
         ...,
         title="Reranker model",
-        description="Reranker model identifier. Not yet implemented.",
+        description=(
+            "sentence-transformers cross-encoder model id, e.g. "
+            "'cross-encoder/ms-marco-MiniLM-L-6-v2'."
+        ),
     )
 
 
@@ -288,7 +294,10 @@ class KnowledgeConfiguration(ConfigurationBase):
     reranker: Optional[RerankerConfiguration] = Field(
         None,
         title="Reranker",
-        description="Reranker configuration. Not yet implemented.",
+        description=(
+            "Optional cross-encoder reranker applied to matches across all "
+            "sources before they're returned or injected."
+        ),
     )
 
 

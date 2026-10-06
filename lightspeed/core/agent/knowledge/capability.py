@@ -24,6 +24,7 @@ from pydantic_ai.models import ModelRequestContext
 from pydantic_ai.tools import AgentDepsT, RunContext
 from pydantic_ai.toolsets import AgentToolset
 
+from lightspeed.core.agent.knowledge.reranker import rerank
 from lightspeed.core.agent.knowledge.sources.base import KnowledgeMatch, KnowledgeSource
 from lightspeed.core.agent.knowledge.toolset import KnowledgeToolset
 from lightspeed.core.agent.utils import append_latest_message, extract_latest_message_text
@@ -36,10 +37,16 @@ class Knowledge(AbstractCapability[AgentDepsT]):
     sources: Sequence[KnowledgeSource]
     """Knowledge sources to search. Each source's own `mode` controls how it's exposed."""
 
+    reranker: Optional[str] = None
+    """Optional `sentence-transformers` cross-encoder model id (e.g.
+    `'cross-encoder/ms-marco-MiniLM-L-6-v2'`) used to rerank matches by
+    relevance to the query before they're returned or injected. Loaded
+    lazily on first use; requires the `sentence-transformers` package."""
+
     def get_toolset(self) -> AgentToolset[AgentDepsT] | None:
         """Provide a single `search_knowledge` tool spanning every source whose `mode` includes `'tool'`."""
         tool_sources = [source for source in self.sources if "tool" in source.mode]
-        return KnowledgeToolset(tool_sources) if tool_sources else None
+        return KnowledgeToolset(tool_sources, reranker=self.reranker) if tool_sources else None
 
     async def before_model_request(
         self,
@@ -81,6 +88,8 @@ class Knowledge(AbstractCapability[AgentDepsT]):
 
         for source in auto_sources:
             matches = await source.search(prompt)
+            if self.reranker:
+                matches = await rerank(prompt, matches, self.reranker)
             if message := to_message(matches, source=source.name):
                 append_latest_message(request_context.messages, message)
 
