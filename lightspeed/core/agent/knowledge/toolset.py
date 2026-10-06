@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Sequence
-from dataclasses import replace
 from typing import Optional
 
 from pydantic_ai.tools import AgentDepsT, RunContext
 from pydantic_ai.toolsets import FunctionToolset
 from sentence_transformers import CrossEncoder
 
-from lightspeed.core.agent.knowledge.reranker import rerank
+from lightspeed.core.agent.knowledge.capability import search_sources
 from lightspeed.core.agent.knowledge.sources.base import KnowledgeSource
 from lightspeed.core.agent.knowledge.types import KnowledgeMatch
 
@@ -49,12 +47,4 @@ class KnowledgeToolset(FunctionToolset[AgentDepsT]):
             ctx: Framework-provided run context.
             query: Natural-language search query.
         """
-        results = await asyncio.gather(*(source.search(query) for source in self._sources))
-        matches = [
-            replace(match, metadata={**match.metadata, "knowledge_source": source.name})
-            for source, source_matches in zip(self._sources, results)
-            for match in source_matches
-        ]
-        if self._reranker:
-            return await rerank(query, matches, self._reranker)
-        return sorted(matches, key=lambda match: match.score, reverse=True)
+        return await search_sources(self._sources, query, self._reranker)

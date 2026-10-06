@@ -3,7 +3,7 @@
 Each attached :class:`~lightspeed.core.agent.knowledge.sources.base.KnowledgeSource`
 declares its own `mode` -- exposed to the agent via a single model-callable
 `search_knowledge` tool spanning every tool-mode source (`'tool'`), as
-automatic inline context injection per source (`'auto'`), or both -- so a
+automatic inline context injection of the merged, ranked matches (`'auto'`), or both -- so a
 single `Knowledge` capability can combine several sources, each exposed
 however it needs to be. Configure sources under `knowledge.sources` in
 `lightspeed-stack.yaml` (see
@@ -14,8 +14,9 @@ or construct this directly for programmatic use, the same way
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional
 
 from pydantic_ai.capabilities import AbstractCapability
@@ -23,12 +24,35 @@ from pydantic_ai.messages import TextContent, UserContent
 from pydantic_ai.models import ModelRequestContext
 from pydantic_ai.tools import AgentDepsT, RunContext
 from pydantic_ai.toolsets import AgentToolset
+from sentence_transformers import CrossEncoder
 
 from lightspeed.core.agent.knowledge.reranker import rerank
 from lightspeed.core.agent.knowledge.sources.base import KnowledgeSource
 from lightspeed.core.agent.knowledge.types import KnowledgeMatch
 from lightspeed.core.agent.knowledge.toolset import KnowledgeToolset
 from lightspeed.core.agent.utils import append_latest_message, extract_latest_message_text
+
+
+async def search_sources(
+    sources: Sequence[KnowledgeSource],
+    query: str,
+    reranker: Optional[CrossEncoder] = None,
+) -> list[KnowledgeMatch]:
+    """Search `sources` concurrently and return merged matches, ranked highest-score-first.
+
+    Each match is tagged with `metadata['knowledge_source']` so hits stay
+    attributable after the merge. Ranked by cross-encoder score if
+    `reranker` is set, otherwise by each source's own similarity score.
+    """
+    results = await asyncio.gather(*(source.search(query) for source in sources))
+    matches = [
+        replace(match, metadata={**match.metadata, "knowledge_source": source.name})
+        for source, source_matches in zip(sources, results)
+        for match in source_matches
+    ]
+    if reranker:
+        return await rerank(query, matches, reranker)
+    return sorted(matches, key=lambda match: match.score, reverse=True)
 
 
 @dataclass
@@ -54,14 +78,15 @@ class Knowledge(AbstractCapability[AgentDepsT]):
         ctx: RunContext[AgentDepsT],
         request_context: ModelRequestContext,
     ) -> ModelRequestContext:
-        """For each source whose `mode` includes `'auto'`, search the latest prompt and inject matches."""
+        """Search every auto-mode source concurrently, rank the merged matches, and inject them."""
 
-        def to_message(matches: list[KnowledgeMatch], source: str) -> Optional[UserContent]:
+        def to_message(matches: list[KnowledgeMatch]) -> Optional[UserContent]:
             if not matches:
                 return None
 
             match_blocks = [
-                f'<match id="{match.id}" source="{match.source}">\n'
+                f'<match id="{match.id}" source="{match.source}" '
+                f'knowledge_source="{match.metadata.get("knowledge_source", "")}">\n'
                 f"{match.content.strip()}\n"
                 f"</match>"
                 for match in matches
@@ -70,12 +95,14 @@ class Knowledge(AbstractCapability[AgentDepsT]):
             body = "\n\n".join(match_blocks)
 
             return TextContent(
-                content=f'<knowledge source="{source}">\n{body}\n</knowledge>',
+                content=f"<knowledge>\n{body}\n</knowledge>",
                 metadata={
                     "kind": "knowledge",
-                    "knowledge_source": source,
                     "knowledge_scores": {match.id: match.score for match in matches},
                     "knowledge_metadata": {match.id: match.metadata for match in matches},
+                    "knowledge_sources": {
+                        match.id: match.metadata.get("knowledge_source") for match in matches
+                    },
                 },
             )
 
@@ -87,11 +114,8 @@ class Knowledge(AbstractCapability[AgentDepsT]):
         if not prompt:
             return request_context
 
-        for source in auto_sources:
-            matches = await source.search(prompt)
-            if self.reranker:
-                matches = await rerank(prompt, matches, self.reranker)
-            if message := to_message(matches, source=source.name):
-                append_latest_message(request_context.messages, message)
+        matches = await search_sources(auto_sources, prompt, self.reranker)
+        if message := to_message(matches):
+            append_latest_message(request_context.messages, message)
 
         return request_context
