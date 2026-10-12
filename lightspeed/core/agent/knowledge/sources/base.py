@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Literal, Optional, Sequence, Set
 
-from lightspeed.core.agent.knowledge.types import KnowledgeMatch
+from lightspeed.core.agent.knowledge.types import KnowledgeDocument, KnowledgeMatch, KnowledgeReadiness
 from pydantic_ai.embeddings import Embedder, EmbeddingSettings
 
 @dataclass
@@ -27,6 +27,10 @@ class KnowledgeSource(ABC):
     @abstractmethod
     async def search(self, prompt: str) -> list[KnowledgeMatch]:
         """Search the knowledge source for matches."""
+
+    @abstractmethod
+    async def readiness(self) -> KnowledgeReadiness:
+        """Report whether this source is ready to serve searches."""
 
 
 class VectorStore(ABC):
@@ -67,3 +71,11 @@ class VectorStoreKnowledgeSource(KnowledgeSource):
         """Search the vector store for matches."""
         embedding_result = await self.embedder.embed_query(query, settings=self.embedding_settings)
         return await self.store.search(embedding_result.embeddings, limit=self.top_k, threshold=self.score_threshold)
+
+    async def readiness(self) -> KnowledgeReadiness:
+        """Report readiness for embedder-backed vector search."""
+        return KnowledgeReadiness(
+            status="ready",
+            message="Embedder and vector store configured",
+            details={"knowledge_source": self.name},
+        )

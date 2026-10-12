@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 
 from lightspeed.core.agent.knowledge.sources.base import KnowledgeSource
-from lightspeed.core.agent.knowledge.types import KnowledgeMatch
+from lightspeed.core.agent.knowledge.types import KnowledgeMatch, KnowledgeReadiness
 
 
 @dataclass
@@ -21,3 +21,10 @@ class OkpKnowledgeSource(KnowledgeSource):
     async def search(self, prompt: str) -> list[KnowledgeMatch]:
         """Search OKP for matches relevant to `prompt`."""
         raise NotImplementedError("OkpKnowledgeSource.search is not implemented yet")
+
+    async def readiness(self) -> KnowledgeReadiness:
+        """Report OKP client readiness."""
+        return KnowledgeReadiness(
+            status="not_ready",
+            message="OkpKnowledgeSource.search is not implemented yet"
+        )

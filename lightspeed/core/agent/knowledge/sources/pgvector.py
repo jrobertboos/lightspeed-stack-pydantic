@@ -3,7 +3,7 @@ from typing import Literal, Optional, Sequence, Set
 from pydantic_ai.embeddings import Embedder, EmbeddingSettings
 
 from lightspeed.core.agent.knowledge.sources.base import VectorStore, VectorStoreKnowledgeSource
-from lightspeed.core.agent.knowledge.types import KnowledgeMatch
+from lightspeed.core.agent.knowledge.types import KnowledgeMatch, KnowledgeReadiness
 
 
 class PgvectorVectorStore(VectorStore):
@@ -58,4 +58,11 @@ class PgvectorKnowledgeSource(VectorStoreKnowledgeSource):
             top_k=top_k,
             score_threshold=score_threshold,
             mode=mode if mode is not None else {"tool"},
+        )
+
+    async def readiness(self) -> KnowledgeReadiness:
+        """Report pgvector backend readiness."""
+        return KnowledgeReadiness(
+            status="not_ready",
+            message="PgvectorVectorStore.search is not implemented yet"
         )
