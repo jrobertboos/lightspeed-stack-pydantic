@@ -47,26 +47,13 @@ def chunk_document(
     )
 
     chunks: list[KnowledgeChunk] = []
-    for index, chunk in enumerate(chunker.chunk(dl_doc=conversion.document)):
+    for chunk in chunker.chunk(dl_doc=conversion.document):
         chunks.append(
             KnowledgeChunk(
                 content=chunker.contextualize(chunk),
-                document_id=document.id,
                 source=document.url,
-                metadata=_chunk_metadata(document, index, chunk),
             )
         )
     return chunks
 
 
-def _chunk_metadata(document: KnowledgeDocument, index: int, chunk: Any) -> dict[str, Any]:
-    """Build metadata for one Docling chunk, including headings when present."""
-    metadata: dict[str, Any] = {
-        "document_id": document.id,
-        "url": document.url,
-        "chunk_index": index,
-    }
-    headings = getattr(getattr(chunk, "meta", None), "headings", None)
-    if headings:
-        metadata["headings"] = list(headings)
-    return metadata

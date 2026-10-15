@@ -63,9 +63,6 @@ class KnowledgeChunk:
     content: str
     """Context-enriched chunk text (e.g. Docling ``contextualize`` output)."""
 
-    document_id: str
-    """``id`` of the parent :class:`KnowledgeDocument`."""
-
     source: str | None = None
     """Optional citation identifier, typically the parent document's URL."""
 
