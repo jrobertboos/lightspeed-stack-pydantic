@@ -292,7 +292,9 @@ KnowledgeSourceRegistry().register(
 | `registry.py` | Process-wide `KnowledgeSource` singleton |
 | `toolset.py` | Concurrent `search_knowledge` over tool-mode sources |
 | `reranker.py` | Cross-encoder rescoring |
-| `types.py` | `KnowledgeMatch` |
+| `types.py` | `KnowledgeMatch`, `KnowledgeDocument`, `KnowledgeChunk` |
+| `processing/chunking.py` | Docling `HybridChunker`: `KnowledgeDocument` → `KnowledgeChunk` |
+| `processing/embedding.py` | pydantic-ai `Embedder.embed_documents` over chunks |
 | `sources/base.py` | `KnowledgeSource`, `VectorStore`, `VectorStoreKnowledgeSource` |
 | `sources/faiss.py` | sqlite-faiss store + `FaissKnowledgeSource` |
 | `sources/pgvector.py` | Planned `PgvectorVectorStore` + `PgvectorKnowledgeSource` |

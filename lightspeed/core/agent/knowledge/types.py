@@ -54,3 +54,23 @@ class KnowledgeDocument:
     
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     """Unique identifier for this document."""
+
+
+@dataclass(frozen=True)
+class KnowledgeChunk:
+    """One chunk of a :class:`KnowledgeDocument`, ready to embed and index."""
+
+    content: str
+    """Context-enriched chunk text (e.g. Docling ``contextualize`` output)."""
+
+    document_id: str
+    """``id`` of the parent :class:`KnowledgeDocument`."""
+
+    source: str | None = None
+    """Optional citation identifier, typically the parent document's URL."""
+
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+    """Chunk metadata (document id, URL, index, headings, …)."""
+
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    """Unique identifier for this chunk."""
