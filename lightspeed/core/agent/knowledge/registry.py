@@ -19,7 +19,8 @@ from __future__ import annotations
 
 from typing import Iterator, Mapping
 
-from lightspeed.core.agent.knowledge.sources.base import KnowledgeSource
+from lightspeed.core.agent.knowledge.sources.base import DynamicKnowledgeSource, KnowledgeSource
+from lightspeed.core.agent.knowledge.types import KnowledgeDocument
 from lightspeed.core.types import Singleton
 
 class KnowledgeSourceRegistry(metaclass=Singleton):
@@ -65,3 +66,32 @@ class KnowledgeSourceRegistry(metaclass=Singleton):
     def sources(self) -> Mapping[str, KnowledgeSource]:
         """Read-only view of registered sources, keyed by source name."""
         return dict(self._sources)
+
+    async def add_document(self, name: str, document: KnowledgeDocument) -> None:
+        """Add a document to the dynamic knowledge source registered under `name`.
+
+        Raises:
+            KeyError: If no source is registered for `name`.
+            TypeError: If the registered source is not a :class:`DynamicKnowledgeSource`.
+        """
+        source = self._get_dynamic(name)
+        await source.add_document(document)
+
+    async def remove_document(self, name: str, document: KnowledgeDocument) -> None:
+        """Remove a document from the dynamic knowledge source registered under `name`.
+
+        Raises:
+            KeyError: If no source is registered for `name`.
+            TypeError: If the registered source is not a :class:`DynamicKnowledgeSource`.
+        """
+        source = self._get_dynamic(name)
+        await source.remove_document(document)
+
+    def _get_dynamic(self, name: str) -> DynamicKnowledgeSource:
+        source = self.get(name)
+        if not isinstance(source, DynamicKnowledgeSource):
+            raise TypeError(
+                f"Knowledge source {name!r} is not a DynamicKnowledgeSource "
+                f"(got {type(source).__name__})."
+            )
+        return source

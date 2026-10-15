@@ -40,3 +40,17 @@ class KnowledgeReadiness:
 
     message: str = ""
     """Human-readable summary for operators and logs."""
+
+
+@dataclass(frozen=True)
+class KnowledgeDocument:
+    """A document in the knowledge source."""
+
+    content: str
+    """The document's text."""
+    
+    url: str
+    """The document's URL."""
+    
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    """Unique identifier for this document."""

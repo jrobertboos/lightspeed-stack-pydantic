@@ -76,6 +76,17 @@ class VectorStoreKnowledgeSource(KnowledgeSource):
         """Report readiness for embedder-backed vector search."""
         return KnowledgeReadiness(
             status="ready",
-            message="Embedder and vector store configured",
-            details={"knowledge_source": self.name},
+            message="Embedder and vector store configured"
         )
+
+@dataclass
+class DynamicKnowledgeSource(KnowledgeSource):
+    """Knowledge source that dynamically generates matches based on a prompt."""
+
+    @abstractmethod
+    async def add_document(self, document: KnowledgeDocument) -> None:
+        """Add a document to the dynamic knowledge source."""
+
+    @abstractmethod
+    async def remove_document(self, document: KnowledgeDocument) -> None:
+        """Remove a document from the dynamic knowledge source."""
